@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/scrape",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/check-alerts",
+      "schedule": "*/30 * * * *"
+    }
+  ]
+}
