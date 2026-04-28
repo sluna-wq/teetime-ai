@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "eval": "node scripts/eval.mjs",
+    "eval:local": "EVAL_MODE=local node scripts/eval.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",

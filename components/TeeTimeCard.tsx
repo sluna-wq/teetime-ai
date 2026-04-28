@@ -61,7 +61,7 @@ export function TeeTimeCard({ teeTime, isHighlighted }: Props) {
         rel="noopener noreferrer"
         className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-700 active:bg-green-800"
       >
-        Reserve on GolfNow
+        Reserve
         <ExternalLinkIcon />
       </a>
     </div>

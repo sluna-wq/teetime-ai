@@ -1,0 +1,239 @@
+{
+  "version": 1,
+  "description": "TeeTime AI regression evals for availability, link reliability, and chat behavior.",
+  "tasks": [
+    {
+      "id": "availability_foursome_cambridge_morning",
+      "suite": "availability",
+      "messages": [
+        "Need a foursome near Cambridge tomorrow morning"
+      ],
+      "location": { "lat": 42.377, "lng": -71.1167 },
+      "expected": {
+        "mustSearch": true,
+        "players": 4,
+        "holes": 18,
+        "timeStart": "07:00",
+        "timeEnd": "12:00",
+        "radiusMiles": 25,
+        "latApprox": 42.377,
+        "lngApprox": -71.1167,
+        "date": "tomorrow",
+        "minResults": 1,
+        "maxTurns": 5,
+        "requiresRecommendations": true
+      },
+      "fixture": {
+        "searchInput": {
+          "lat": 42.377,
+          "lng": -71.1167,
+          "radius_miles": 25,
+          "date": "tomorrow",
+          "time_start": "07:00",
+          "time_end": "12:00",
+          "holes": 18,
+          "players": 4
+        },
+        "finalText": "**Fresh Pond Golf Course** at 8:30 AM is the easiest Cambridge-area option for a foursome. **George Wright Golf Course** at 9:10 AM is a better full 18 if you want more of a classic round."
+      }
+    },
+    {
+      "id": "availability_budget_saturday",
+      "suite": "availability",
+      "messages": [
+        "Anything under $50 this Saturday?"
+      ],
+      "location": { "lat": 42.354, "lng": -71.06 },
+      "expected": {
+        "mustSearch": true,
+        "maxPrice": 50,
+        "holes": 18,
+        "date": "nextSaturday",
+        "minResults": 1,
+        "maxTurns": 5,
+        "requiresRecommendations": true
+      },
+      "fixture": {
+        "searchInput": {
+          "lat": 42.354,
+          "lng": -71.06,
+          "radius_miles": 25,
+          "date": "nextSaturday",
+          "holes": 18,
+          "max_price": 50
+        },
+        "finalText": "**William J. Devine Golf Course** at 10:00 AM is the best under-$50 pick: classic Donald Ross golf and walkable. **Putterham Meadows** at 11:20 AM is another good-value option."
+      }
+    },
+    {
+      "id": "availability_nine_holes_after_three",
+      "suite": "availability",
+      "messages": [
+        "I want 9 holes near Harvard after 3pm"
+      ],
+      "location": { "lat": 42.377, "lng": -71.1167 },
+      "expected": {
+        "mustSearch": true,
+        "holes": 9,
+        "timeStart": "15:00",
+        "latApprox": 42.377,
+        "lngApprox": -71.1167,
+        "minResults": 1,
+        "maxTurns": 5,
+        "requiresRecommendations": true
+      },
+      "fixture": {
+        "searchInput": {
+          "lat": 42.377,
+          "lng": -71.1167,
+          "radius_miles": 25,
+          "date": "tomorrow",
+          "time_start": "15:00",
+          "holes": 9
+        },
+        "finalText": "**Fresh Pond Golf Course** at 3:40 PM is the cleanest fit for 9 holes near Harvard. **Stoneham Oaks Golf Course** at 4:10 PM is also workable if you can head a bit north."
+      }
+    },
+    {
+      "id": "chat_scenic_special_occasion",
+      "suite": "chat_behavior",
+      "messages": [
+        "Anything scenic for a special occasion tomorrow?"
+      ],
+      "location": { "lat": 42.354, "lng": -71.06 },
+      "expected": {
+        "mustSearch": true,
+        "date": "tomorrow",
+        "minResults": 1,
+        "highlightCoursesAnyOf": [
+          "Granite Links",
+          "President's Golf Course",
+          "Widow's Walk Golf Course"
+        ],
+        "maxTurns": 5,
+        "requiresRecommendations": true
+      },
+      "fixture": {
+        "searchInput": {
+          "lat": 42.354,
+          "lng": -71.06,
+          "radius_miles": 25,
+          "date": "tomorrow",
+          "holes": 18
+        },
+        "finalText": "**Granite Links** at 9:20 AM is the special-occasion pick: skyline views, polished feel, and cart included. **President's Golf Course** at 10:40 AM is the lower-key scenic option with harbor views."
+      }
+    },
+    {
+      "id": "chat_zero_context_first_message",
+      "suite": "chat_behavior",
+      "messages": [
+        "hi"
+      ],
+      "location": { "lat": 42.354, "lng": -71.06 },
+      "expected": {
+        "mustSearch": false,
+        "mustAskExactly": "When are you thinking of playing?",
+        "maxTurns": 1,
+        "requiresRecommendations": false
+      },
+      "fixture": {
+        "searchInput": null,
+        "finalText": "When are you thinking of playing?"
+      }
+    },
+    {
+      "id": "chat_followup_preserves_context",
+      "suite": "chat_behavior",
+      "messages": [
+        "Find me something under $60 tomorrow morning",
+        "What about just 9 holes?"
+      ],
+      "location": { "lat": 42.354, "lng": -71.06 },
+      "expected": {
+        "mustSearch": true,
+        "date": "tomorrow",
+        "timeStart": "07:00",
+        "timeEnd": "12:00",
+        "holes": 9,
+        "maxPrice": 60,
+        "minResults": 1,
+        "maxTurns": 5,
+        "requiresRecommendations": true
+      },
+      "fixture": {
+        "searchInput": {
+          "lat": 42.354,
+          "lng": -71.06,
+          "radius_miles": 25,
+          "date": "tomorrow",
+          "time_start": "07:00",
+          "time_end": "12:00",
+          "holes": 9,
+          "max_price": 60
+        },
+        "finalText": "**Fresh Pond Golf Course** at 8:30 AM is the best 9-hole follow-up under $60. **Stoneham Oaks Golf Course** at 10:20 AM is another short-round option."
+      }
+    },
+    {
+      "id": "link_reliability_course_direct",
+      "suite": "link_reliability",
+      "messages": [
+        "Show me any walking slots tomorrow before 9am"
+      ],
+      "location": { "lat": 42.354, "lng": -71.06 },
+      "expected": {
+        "mustSearch": true,
+        "date": "tomorrow",
+        "timeEnd": "09:00",
+        "walkingAllowed": true,
+        "minResults": 1,
+        "maxTurns": 5,
+        "requiresRecommendations": true
+      },
+      "fixture": {
+        "searchInput": {
+          "lat": 42.354,
+          "lng": -71.06,
+          "radius_miles": 25,
+          "date": "tomorrow",
+          "time_end": "09:00",
+          "holes": 18
+        },
+        "finalText": "**Fresh Pond Golf Course** at 8:30 AM is the easiest walking slot before 9. **William J. Devine Golf Course** at 8:50 AM is a better full-course walk."
+      }
+    },
+    {
+      "id": "availability_no_results_honest_response",
+      "suite": "availability",
+      "messages": [
+        "Anything under $10 at Granite Links tomorrow morning?"
+      ],
+      "location": { "lat": 42.354, "lng": -71.06 },
+      "expected": {
+        "mustSearch": true,
+        "date": "tomorrow",
+        "timeStart": "07:00",
+        "timeEnd": "12:00",
+        "maxPrice": 10,
+        "minResults": 0,
+        "allowNoResults": true,
+        "mustNotClaimAvailability": true,
+        "requiresRecommendations": false
+      },
+      "fixture": {
+        "searchInput": {
+          "lat": 42.354,
+          "lng": -71.06,
+          "radius_miles": 25,
+          "date": "tomorrow",
+          "time_start": "07:00",
+          "time_end": "12:00",
+          "holes": 18,
+          "max_price": 10
+        },
+        "finalText": "I did not find anything under $10 at Granite Links tomorrow morning. The closest useful move is widening the budget or looking at municipal courses."
+      }
+    }
+  ]
+}

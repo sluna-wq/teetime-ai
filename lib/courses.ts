@@ -94,7 +94,7 @@ export const BOSTON_COURSES = [
     city: 'Chestnut Hill',
     lat: 42.3200, lng: -71.1620,
     phone: '(617) 730-2078',
-    website: 'https://www.brooklinema.gov/golf',
+    website: 'https://www.brooklinegolf.com',
     golfnow_facility_id: '4513',
     golfnow_slug: 'brookline-golf-club-at-putterham',
     holes_available: [18],
