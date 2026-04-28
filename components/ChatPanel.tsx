@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { TeeTime, Course, ChatMessage, TeeTimeQuery } from '@/types'
 import { cn } from '@/lib/utils'
+import { FILTER_LABELS_SHORT } from '@/lib/filters'
 
 interface Props {
   onTeeTimes: (tts: TeeTime[]) => void
@@ -17,14 +18,6 @@ interface Props {
 }
 
 type LoadStatus = 'idle' | 'thinking' | 'searching' | 'streaming'
-
-const FILTER_LABELS: Record<string, string> = {
-  walking: 'Walking',
-  under40: '<$40',
-  under55: '<$55',
-  '18holes': '18h',
-  '9holes': '9h',
-}
 
 const SUGGESTIONS = [
   'Morning tee time this Saturday near me',
@@ -64,10 +57,7 @@ export function ChatPanel({ onTeeTimes, onCourses, onSearchContext, onRecommenda
     // Append active panel filter context so Claude knows what's already filtered
     let text = rawText
     if (activeFilters.size > 0) {
-      const labels = [...activeFilters].map((f) => ({
-        walking: 'walking only', under40: 'under $40', under55: 'under $55',
-        '18holes': '18 holes', '9holes': '9 holes',
-      }[f] || f))
+      const labels = [...activeFilters].map((f) => FILTER_LABELS_SHORT[f as keyof typeof FILTER_LABELS_SHORT] || f)
       text = `${rawText} [Panel filters active: ${labels.join(', ')}]`
     }
 
@@ -239,7 +229,7 @@ export function ChatPanel({ onTeeTimes, onCourses, onSearchContext, onRecommenda
           <span className="text-[10px] font-medium text-gray-400">Filtered:</span>
           {[...activeFilters].map((f) => (
             <span key={f} className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
-              {FILTER_LABELS[f] || f}
+              {FILTER_LABELS_SHORT[f as keyof typeof FILTER_LABELS_SHORT] || f}
             </span>
           ))}
           <span className="text-[10px] text-gray-400 ml-auto italic">adjust in results →</span>

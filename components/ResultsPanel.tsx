@@ -3,17 +3,9 @@
 import { useState, useMemo, ComponentType } from 'react'
 import type { Course, TeeTime } from '@/types'
 import { formatTime, formatDate } from '@/lib/utils'
+import { type Filter, FILTER_LABELS } from '@/lib/filters'
 
 type SortKey = 'default' | 'price_asc' | 'time_asc' | 'time_desc'
-type Filter = 'walking' | 'under40' | 'under55' | '18holes' | '9holes'
-
-const FILTER_LABELS: Record<Filter, string> = {
-  walking: 'Walking only',
-  under40: 'Under $40',
-  under55: 'Under $55',
-  '18holes': '18 holes',
-  '9holes': '9 holes',
-}
 
 interface MapProps {
   courses: Course[]
@@ -43,7 +35,6 @@ export function ResultsPanel({ teeTimes, courses, selectedCourseId, onCourseSele
   const [sort, setSort] = useState<SortKey>('default')
   const [showAll, setShowAll] = useState(false)
 
-  // Reset pagination + sort when new results arrive
   const [prevLen, setPrevLen] = useState(teeTimes.length)
   if (teeTimes.length !== prevLen) {
     setShowAll(false); setSort('default'); setPrevLen(teeTimes.length)
@@ -51,17 +42,15 @@ export function ResultsPanel({ teeTimes, courses, selectedCourseId, onCourseSele
 
   const toggleFilter = (f: Filter) => {
     setShowAll(false)
-    onFiltersChange((() => {
-      const next = new Set(activeFilters)
-      if (next.has(f)) {
-        next.delete(f)
-      } else {
-        if (f === 'under40' || f === 'under55') { next.delete('under40'); next.delete('under55') }
-        if (f === '18holes' || f === '9holes') { next.delete('18holes'); next.delete('9holes') }
-        next.add(f)
-      }
-      return next
-    })())
+    const next = new Set(activeFilters)
+    if (next.has(f)) {
+      next.delete(f)
+    } else {
+      if (f === 'under40' || f === 'under55') { next.delete('under40'); next.delete('under55') }
+      if (f === '18holes' || f === '9holes') { next.delete('18holes'); next.delete('9holes') }
+      next.add(f)
+    }
+    onFiltersChange(next)
   }
 
   const filtered = useMemo(() => {
@@ -89,14 +78,15 @@ export function ResultsPanel({ teeTimes, courses, selectedCourseId, onCourseSele
 
   const allVisible = [...recommended, ...rest]
   const visible = showAll ? allVisible : allVisible.slice(0, PAGE)
+  const visibleIds = new Set(visible.map((t) => t.id))
   const hidden = allVisible.length - PAGE
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Toolbar */}
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-100 bg-white shrink-0 flex-wrap">
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 border-b border-gray-100 bg-white shrink-0">
         {/* View toggle */}
-        <div className="flex rounded-lg border border-gray-200 overflow-hidden shrink-0 mr-1">
+        <div className="flex rounded-lg border border-gray-200 overflow-hidden shrink-0">
           {(['list', 'map'] as const).map((v) => (
             <button key={v} onClick={() => onViewChange(v)}
               className={`px-3 py-1 text-[11px] font-medium transition-colors ${view === v ? 'bg-gray-900 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
@@ -106,10 +96,10 @@ export function ResultsPanel({ teeTimes, courses, selectedCourseId, onCourseSele
         </div>
 
         {/* Filters */}
-        <div className="flex flex-wrap gap-1.5 flex-1">
+        <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
           {(Object.keys(FILTER_LABELS) as Filter[]).map((f) => (
             <button key={f} onClick={() => toggleFilter(f)}
-              className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-all ${
+              className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-all whitespace-nowrap ${
                 activeFilters.has(f)
                   ? 'border-green-500 bg-green-50 text-green-700'
                   : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
@@ -120,7 +110,7 @@ export function ResultsPanel({ teeTimes, courses, selectedCourseId, onCourseSele
         </div>
 
         {/* Sort + count */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 ml-auto">
           <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)}
             className="rounded-full border border-gray-200 bg-white px-2.5 py-0.5 text-[11px] text-gray-500 outline-none cursor-pointer">
             <option value="default">Best match</option>
@@ -156,17 +146,13 @@ export function ResultsPanel({ teeTimes, courses, selectedCourseId, onCourseSele
                     ★ Claude&apos;s picks
                   </p>
                   <div className="space-y-2">
-                    {recommended.map((tt, i) => {
-                      const inView = visible.includes(tt)
-                      if (!inView) return null
-                      return (
-                        <ResultRow key={tt.id} teeTime={tt} rank={i + 1}
-                          isSelected={selectedCourseId === tt.course_id}
-                          isRecommended
-                          onSelect={() => onCourseSelect(tt.course_id === selectedCourseId ? null : tt.course_id)}
-                        />
-                      )
-                    })}
+                    {recommended.filter((tt) => visibleIds.has(tt.id)).map((tt, i) => (
+                      <ResultRow key={tt.id} teeTime={tt} rank={i + 1}
+                        isSelected={selectedCourseId === tt.course_id}
+                        isRecommended
+                        onSelect={() => onCourseSelect(tt.course_id === selectedCourseId ? null : tt.course_id)}
+                      />
+                    ))}
                   </div>
                 </div>
               )}
@@ -181,18 +167,13 @@ export function ResultsPanel({ teeTimes, courses, selectedCourseId, onCourseSele
               )}
 
               <div className="space-y-2">
-                {rest.map((tt, i) => {
-                  const rank = recommended.length + i + 1
-                  const inView = visible.includes(tt)
-                  if (!inView) return null
-                  return (
-                    <ResultRow key={tt.id} teeTime={tt} rank={rank}
-                      isSelected={selectedCourseId === tt.course_id}
-                      isRecommended={false}
-                      onSelect={() => onCourseSelect(tt.course_id === selectedCourseId ? null : tt.course_id)}
-                    />
-                  )
-                })}
+                {rest.filter((tt) => visibleIds.has(tt.id)).map((tt, i) => (
+                  <ResultRow key={tt.id} teeTime={tt} rank={recommended.length + i + 1}
+                    isSelected={selectedCourseId === tt.course_id}
+                    isRecommended={false}
+                    onSelect={() => onCourseSelect(tt.course_id === selectedCourseId ? null : tt.course_id)}
+                  />
+                ))}
               </div>
 
               {!showAll && hidden > 0 && (
@@ -222,7 +203,7 @@ function ResultRow({ teeTime, rank, isSelected, isRecommended, onSelect }: {
   return (
     <div
       onClick={onSelect}
-      className={`flex items-center gap-3 rounded-xl border px-4 py-3 cursor-pointer transition-all ${
+      className={`flex items-start gap-2.5 rounded-xl border px-3 py-3 cursor-pointer transition-all ${
         isSelected
           ? 'border-green-400 bg-green-50 shadow-sm'
           : isRecommended
@@ -230,38 +211,40 @@ function ResultRow({ teeTime, rank, isSelected, isRecommended, onSelect }: {
           : 'border-gray-100 bg-white hover:border-gray-200 hover:shadow-sm'
       }`}
     >
-      <span className="shrink-0 text-xs font-bold text-gray-300 w-5 text-center">{rank}</span>
+      <span className="shrink-0 text-xs font-bold text-gray-300 w-4 text-center mt-0.5">{rank}</span>
 
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold text-gray-900 truncate">{course?.name}</p>
-        <p className="text-xs text-gray-400">{course?.city}</p>
-      </div>
+        {/* Row 1: name + price + book */}
+        <div className="flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-gray-900 truncate">{course?.name}</p>
+            <p className="text-xs text-gray-400">{course?.city}</p>
+          </div>
+          <div className="shrink-0 flex items-center gap-2">
+            <p className="text-base font-bold text-green-700 leading-none">${teeTime.price_per_player}</p>
+            <a
+              href={teeTime.booking_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="text-[11px] font-semibold bg-green-600 text-white px-3 py-1 rounded-lg hover:bg-green-700 transition-colors whitespace-nowrap"
+            >
+              Reserve →
+            </a>
+          </div>
+        </div>
 
-      <div className="shrink-0 text-center">
-        <p className="text-sm font-semibold text-gray-800">{formatTime(teeTime.tee_time)}</p>
-        <p className="text-xs text-gray-400">{formatDate(teeTime.tee_date)}</p>
-      </div>
-
-      <div className="shrink-0 flex flex-col items-end gap-1">
-        <span className="text-[11px] rounded-full bg-gray-100 px-2 py-0.5 text-gray-500">
-          {teeTime.holes}h
-        </span>
-        <span className={`text-[11px] rounded-full px-2 py-0.5 ${teeTime.walking_allowed ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>
-          {teeTime.walking_allowed ? 'Walk ✓' : 'Cart'}
-        </span>
-      </div>
-
-      <div className="shrink-0 flex flex-col items-end gap-1.5">
-        <p className="text-lg font-bold text-green-700 leading-none">${teeTime.price_per_player}</p>
-        <a
-          href={teeTime.booking_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className="text-[11px] font-semibold bg-green-600 text-white px-3 py-1 rounded-lg hover:bg-green-700 transition-colors"
-        >
-          Reserve →
-        </a>
+        {/* Row 2: time + date + badges */}
+        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+          <span className="text-xs font-semibold text-gray-700">{formatTime(teeTime.tee_time)}</span>
+          <span className="text-[11px] text-gray-400">{formatDate(teeTime.tee_date)}</span>
+          <span className="text-[11px] rounded-full bg-gray-100 px-2 py-0.5 text-gray-500">
+            {teeTime.holes}h
+          </span>
+          <span className={`text-[11px] rounded-full px-2 py-0.5 ${teeTime.walking_allowed ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>
+            {teeTime.walking_allowed ? 'Walk ✓' : 'Cart'}
+          </span>
+        </div>
       </div>
     </div>
   )

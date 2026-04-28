@@ -166,7 +166,7 @@ async function handleToolCall(
   }
 
   if (toolName === 'recommend_tee_times') {
-    // Terminal tool — just echoes back the slot_ids to the client; no DB work needed
+    // Forwarded through the SSE stream so the client can pin these ids to the top of the panel
     return { success: true, slot_ids: toolInput.slot_ids }
   }
 
