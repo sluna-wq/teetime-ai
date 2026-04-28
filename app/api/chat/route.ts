@@ -54,12 +54,10 @@ When a user asks for "scenic", "historic", "challenging", "good quality", etc. �
 - Do NOT suggest UI filters — the panel handles that automatically.
 - If panel filters are active (shown as "[Panel filters active: ...]"), acknowledge briefly if relevant.
 
-## REQUIRED: Sync your picks to the results panel
-After EVERY search_tee_times call, you MUST:
-1. Write your 2–3 sentence text recommendation (name the specific slots)
-2. Call recommend_tee_times with the exact \`id\` field values (UUIDs) of those 2–3 slots from the search results, in your preferred order (best first)
+## Syncing picks to the results panel
+Once you have received search results and written your text recommendation, call recommend_tee_times with the exact "id" UUID values of the 2–3 slots you mentioned, in priority order (best first). This pins your picks to the top of the results panel so the user sees what you're describing.
 
-This is ALWAYS your final action after a search. The recommend call pins your picks to the top of the results panel so the user sees exactly what you described.
+Important: call recommend_tee_times ONLY after you have seen search results and written your text. Do not call it before searching.
 
 ## Booking
 Tell the user to click Reserve on the card. Do not fabricate booking URLs.
@@ -103,7 +101,7 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: 'recommend_tee_times',
-    description: 'Pin your top 2–3 recommended slots to the top of the results panel. ALWAYS call this after search_tee_times, with the id values of the specific slots you mention in your text. This syncs your narrative to the UI.',
+    description: 'Pin your top 2–3 recommended tee time slots to the top of the results panel. Call this ONLY after you have received search results and written your text recommendation. Pass the exact `id` UUID values of the slots you mentioned, in priority order.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -236,8 +234,11 @@ export async function POST(req: NextRequest) {
       try {
         let currentMessages = [...messages]
         let continueLoop = true
+        let loopCount = 0
 
-        while (continueLoop) {
+        while (continueLoop && loopCount < 5) {
+          loopCount++
+
           const response = await client.messages.create({
             model: 'claude-sonnet-4-6',
             max_tokens: 1024,
@@ -246,7 +247,7 @@ export async function POST(req: NextRequest) {
             messages: currentMessages,
           })
 
-          // Stream text blocks first
+          // Stream text blocks
           for (const block of response.content) {
             if (block.type === 'text') {
               controller.enqueue(
@@ -281,20 +282,14 @@ export async function POST(req: NextRequest) {
                 tool_use_id: block.id,
                 content: JSON.stringify(result),
               })
-
-              // recommend_tee_times is always the last action — stop after processing it
-              if (block.name === 'recommend_tee_times') {
-                continueLoop = false
-              }
             }
 
-            if (continueLoop) {
-              currentMessages = [
-                ...currentMessages,
-                { role: 'assistant', content: response.content },
-                { role: 'user', content: toolResults },
-              ]
-            }
+            // Always update messages and continue — let Claude terminate naturally
+            currentMessages = [
+              ...currentMessages,
+              { role: 'assistant', content: response.content },
+              { role: 'user', content: toolResults },
+            ]
           } else {
             continueLoop = false
           }
