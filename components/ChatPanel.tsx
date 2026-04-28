@@ -97,48 +97,59 @@ export function ChatPanel({ onTeeTimes, onCourses, onSearchContext, onRecommenda
       let assistantText = ''
       let currentTeeTimes: TeeTime[] = []
       let rowAdded = false
+      let sseBuffer = '' // accumulates across chunks — fixes fragmented large events
+
+      const handleEvent = (raw: string) => {
+        const data = raw.startsWith('data: ') ? raw.slice(6).trim() : raw.trim()
+        if (!data || data === '[DONE]') return
+        try {
+          const event = JSON.parse(data)
+          if (event.type === 'tool_call' && event.name === 'search_tee_times') {
+            setStatus('searching')
+            onSearchContext(event.input as TeeTimeQuery)
+          }
+          if (event.type === 'text') {
+            if (!rowAdded) {
+              setMessages((prev) => [...prev, { role: 'assistant', content: '' }])
+              rowAdded = true
+            }
+            setStatus('streaming')
+            assistantText += event.text
+            setMessages((prev) => {
+              const u = [...prev]
+              u[u.length - 1] = { role: 'assistant', content: assistantText }
+              return u
+            })
+          }
+          if (event.type === 'tool_result' && event.name === 'search_tee_times') {
+            const r = event.result as { tee_times?: TeeTime[] }
+            if (r.tee_times) { currentTeeTimes = r.tee_times; onTeeTimes(r.tee_times) }
+          }
+          if (event.type === 'tool_result' && event.name === 'recommend_tee_times') {
+            const r = event.result as { slot_ids?: string[] }
+            if (r.slot_ids) onRecommendations(r.slot_ids)
+          }
+          if (event.type === 'tool_result' && event.name === 'get_courses') {
+            const r = event.result as { courses?: Course[] }
+            if (r.courses) onCourses(r.courses)
+          }
+        } catch { /* malformed JSON — skip */ }
+      }
 
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
-        const lines = decoder.decode(value).split('\n').filter((l) => l.startsWith('data: '))
+        // Append new chunk to buffer, then process complete lines
+        sseBuffer += decoder.decode(value, { stream: true })
+        const lines = sseBuffer.split('\n')
+        // Keep the last (potentially incomplete) line in the buffer
+        sseBuffer = lines.pop() ?? ''
         for (const line of lines) {
-          const data = line.slice(6)
-          if (data === '[DONE]') break
-          try {
-            const event = JSON.parse(data)
-            if (event.type === 'tool_call' && event.name === 'search_tee_times') {
-              setStatus('searching')
-              onSearchContext(event.input as TeeTimeQuery)
-            }
-            if (event.type === 'text') {
-              if (!rowAdded) {
-                setMessages((prev) => [...prev, { role: 'assistant', content: '' }])
-                rowAdded = true
-              }
-              setStatus('streaming')
-              assistantText += event.text
-              setMessages((prev) => {
-                const u = [...prev]
-                u[u.length - 1] = { role: 'assistant', content: assistantText }
-                return u
-              })
-            }
-            if (event.type === 'tool_result' && event.name === 'search_tee_times') {
-              const r = event.result as { tee_times?: TeeTime[] }
-              if (r.tee_times) { currentTeeTimes = r.tee_times; onTeeTimes(r.tee_times) }
-            }
-            if (event.type === 'tool_result' && event.name === 'recommend_tee_times') {
-              const r = event.result as { slot_ids?: string[] }
-              if (r.slot_ids) onRecommendations(r.slot_ids)
-            }
-            if (event.type === 'tool_result' && event.name === 'get_courses') {
-              const r = event.result as { courses?: Course[] }
-              if (r.courses) onCourses(r.courses)
-            }
-          } catch { /* skip */ }
+          if (line.startsWith('data: ')) handleEvent(line)
         }
       }
+      // Flush any remaining buffer content
+      if (sseBuffer.startsWith('data: ')) handleEvent(sseBuffer)
 
       if (currentTeeTimes.length > 0 && !rowAdded) {
         onTeeTimes(currentTeeTimes)

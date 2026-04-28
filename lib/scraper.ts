@@ -459,7 +459,7 @@ function generateInMemoryDemo(params: {
 
   return results
     .sort((a, b) => a.tee_date.localeCompare(b.tee_date) || a.tee_time.localeCompare(b.tee_time))
-    .slice(0, 50)
+    .slice(0, 20)
 }
 
 // Query tee times from DB — called by Claude tool use
@@ -486,7 +486,7 @@ export async function queryTeeTimes(params: {
     .gte('tee_date', params.date || params.date_start || new Date().toISOString().split('T')[0])
     .order('tee_date', { ascending: true })
     .order('tee_time', { ascending: true })
-    .limit(50)
+    .limit(20)
 
   if (params.date) {
     query = query.eq('tee_date', params.date)
