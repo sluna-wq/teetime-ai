@@ -265,12 +265,14 @@ export async function scrapeAllCourses(daysAhead = 7) {
 
         // If scraping returned nothing, use demo data so the app still works
         if (teeTimes.length === 0) {
+          const bookingUrl = course.website ||
+            `https://www.google.com/search?q=${encodeURIComponent(course.name + ' tee times reservation')}`
           const demoRows = generateDemoTeeTimes(
             course.id,
             date,
             course.price_min || 30,
             course.price_max || 60,
-            `https://www.golfnow.com/tee-times/facility/${course.golfnow_facility_id}-${course.golfnow_slug}/search`
+            bookingUrl
           )
           totalFound += demoRows.length
 

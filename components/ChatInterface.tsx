@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { TeeTime, Course, ChatMessage } from '@/types'
-import { TeeTimeCard } from './TeeTimeCard'
+import { TeeTimeResults } from './TeeTimeResults'
 import { cn } from '@/lib/utils'
 
 interface Props {
@@ -33,13 +33,13 @@ export function ChatInterface({
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [streamingTeeTimes, setStreamingTeeTimes] = useState<TeeTime[]>([])
+  const [, setStreamingTeeTimes] = useState<TeeTime[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamingTeeTimes])
+  }, [messages])
 
   useEffect(() => {
     if (!userLocation && typeof navigator !== 'undefined' && 'geolocation' in navigator) {
@@ -223,31 +223,16 @@ export function ChatInterface({
                 )}
               </div>
 
-              {/* Tee time cards — only show top 3 */}
+              {/* Tee time results — outside the bubble, clean comparison strip */}
               {message.tee_times && message.tee_times.length > 0 && (
-                <div className="w-full space-y-2">
-                  {message.tee_times.slice(0, 3).map((tt) => (
-                    <TeeTimeCard key={tt.id} teeTime={tt} />
-                  ))}
-                  {message.tee_times.length > 3 && (
-                    <p className="text-xs text-gray-400 text-center pt-1">
-                      +{message.tee_times.length - 3} more available · click map markers to explore
-                    </p>
-                  )}
-                </div>
+                <TeeTimeResults
+                  teeTimes={message.tee_times.slice(0, 3)}
+                  totalCount={message.tee_times.length}
+                />
               )}
             </div>
           </div>
         ))}
-
-        {/* Streaming tee times while loading */}
-        {isLoading && streamingTeeTimes.length > 0 && (
-          <div className="pl-10 space-y-2">
-            {streamingTeeTimes.map((tt) => (
-              <TeeTimeCard key={tt.id} teeTime={tt} />
-            ))}
-          </div>
-        )}
 
         {isLoading && (
           <div className="flex gap-3 justify-start">
