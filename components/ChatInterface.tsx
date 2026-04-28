@@ -17,30 +17,44 @@ interface Props {
 }
 
 const SUGGESTIONS = [
-  'Tee times this Saturday near Cambridge',
-  'Best value 18-hole round this weekend',
-  'Morning slot tomorrow, walking preferred',
-  'Alert me when Fresh Pond has a Sunday opening',
+  'Morning tee time tomorrow, walking preferred',
+  'Best value round this weekend',
+  'Foursome Saturday near Cambridge',
+  'Alert me when Fresh Pond opens up Sunday',
 ]
+
+// Parse CHIPS: line from assistant response
+function parseChips(content: string): { text: string; chips: string[] } {
+  const chipsMatch = content.match(/\nCHIPS:\s*(.+)$/m)
+  if (!chipsMatch) return { text: content, chips: [] }
+  const chips = chipsMatch[1].split('|').map((c) => c.trim()).filter(Boolean)
+  const text = content.replace(/\nCHIPS:\s*.+$/m, '').trimEnd()
+  return { text, chips }
+}
+
+// Always prepend location context to every user message sent to the API
+function injectLocation(content: string, loc: { lat: number; lng: number } | null): string {
+  if (!loc) return content
+  return `[User GPS: ${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}]\n${content}`
+}
 
 export function ChatInterface({
   onTeeTimes,
   onCourses,
-  selectedCourseId,
   userLocation,
   onSetUserLocation,
 }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [, setStreamingTeeTimes] = useState<TeeTime[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [messages, isLoading])
 
+  // Request GPS on mount
   useEffect(() => {
     if (!userLocation && typeof navigator !== 'undefined' && 'geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
@@ -58,16 +72,11 @@ export function ChatInterface({
     setMessages(newMessages)
     setInput('')
     setIsLoading(true)
-    setStreamingTeeTimes([])
 
-    let firstUserContent = text
-    if (userLocation && messages.length === 0) {
-      firstUserContent = `[User location: ${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)}]\n\n${text}`
-    }
-
-    const apiMessages = newMessages.map((m, i) => ({
+    // Inject GPS into every user message for the API
+    const apiMessages = newMessages.map((m) => ({
       role: m.role,
-      content: i === 0 ? firstUserContent : m.content,
+      content: m.role === 'user' ? injectLocation(m.content, userLocation) : m.content,
     }))
 
     try {
@@ -84,6 +93,7 @@ export function ChatInterface({
       let assistantText = ''
       let currentTeeTimes: TeeTime[] = []
 
+      // Add empty assistant message to stream into
       setMessages((prev) => [...prev, { role: 'assistant', content: '' }])
 
       while (true) {
@@ -96,10 +106,8 @@ export function ChatInterface({
         for (const line of lines) {
           const data = line.slice(6)
           if (data === '[DONE]') break
-
           try {
             const event = JSON.parse(data)
-
             if (event.type === 'text') {
               assistantText += event.text
               setMessages((prev) => {
@@ -108,16 +116,13 @@ export function ChatInterface({
                 return updated
               })
             }
-
             if (event.type === 'tool_result' && event.name === 'search_tee_times') {
               const result = event.result as { tee_times?: TeeTime[] }
               if (result.tee_times) {
                 currentTeeTimes = result.tee_times
-                setStreamingTeeTimes(result.tee_times.slice(0, 3))
                 onTeeTimes(result.tee_times)
               }
             }
-
             if (event.type === 'tool_result' && event.name === 'get_courses') {
               const result = event.result as { courses?: Course[] }
               if (result.courses) onCourses(result.courses)
@@ -126,13 +131,11 @@ export function ChatInterface({
         }
       }
 
+      // Attach tee times to the final message
       if (currentTeeTimes.length > 0) {
         setMessages((prev) => {
           const updated = [...prev]
-          updated[updated.length - 1] = {
-            ...updated[updated.length - 1],
-            tee_times: currentTeeTimes,
-          }
+          updated[updated.length - 1] = { ...updated[updated.length - 1], tee_times: currentTeeTimes }
           return updated
         })
       }
@@ -141,7 +144,6 @@ export function ChatInterface({
       setMessages((prev) => [...prev, { role: 'assistant', content: `Sorry — ${msg}` }])
     } finally {
       setIsLoading(false)
-      setStreamingTeeTimes([])
       inputRef.current?.focus()
     }
   }, [messages, isLoading, userLocation, onTeeTimes, onCourses])
@@ -157,16 +159,18 @@ export function ChatInterface({
     <div className="flex h-full flex-col bg-white">
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-5 space-y-5">
+
+        {/* Empty state */}
         {messages.length === 0 && (
-          <div className="flex flex-col h-full justify-end pb-4 gap-5">
+          <div className="flex flex-col h-full justify-end pb-2 gap-4">
             <div>
-              <p className="text-[13px] font-semibold uppercase tracking-wider text-gray-400 mb-3">Try asking</p>
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-300 mb-2.5">Try asking</p>
               <div className="grid grid-cols-1 gap-2">
                 {SUGGESTIONS.map((s) => (
                   <button
                     key={s}
                     onClick={() => sendMessage(s)}
-                    className="rounded-xl border border-gray-200 px-4 py-2.5 text-left text-sm text-gray-700 hover:border-green-300 hover:bg-green-50 hover:text-green-800 transition-all"
+                    className="rounded-xl border border-gray-200 px-4 py-2.5 text-left text-sm text-gray-600 hover:border-green-300 hover:bg-green-50 hover:text-green-800 transition-all"
                   >
                     {s}
                   </button>
@@ -176,69 +180,88 @@ export function ChatInterface({
           </div>
         )}
 
-        {messages.map((message, i) => (
-          <div key={i} className={cn('flex gap-3', message.role === 'user' ? 'justify-end' : 'justify-start')}>
-            {message.role === 'assistant' && (
-              <div className="shrink-0 mt-0.5 h-7 w-7 rounded-full bg-green-600 flex items-center justify-center text-white text-xs font-bold">
-                AI
-              </div>
-            )}
-            <div className={cn('max-w-[88%]', message.role === 'user' ? 'items-end' : 'items-start', 'flex flex-col gap-2')}>
-              <div
-                className={cn(
+        {/* Message thread */}
+        {messages.map((message, i) => {
+          const isUser = message.role === 'user'
+          const isLast = i === messages.length - 1
+
+          // Parse chips out of assistant text
+          const { text: displayText, chips } = isUser
+            ? { text: message.content, chips: [] }
+            : parseChips(message.content)
+
+          return (
+            <div key={i} className={cn('flex gap-2.5', isUser ? 'justify-end' : 'justify-start')}>
+              {/* AI avatar */}
+              {!isUser && (
+                <div className="shrink-0 mt-0.5 h-6 w-6 rounded-full bg-green-600 flex items-center justify-center text-white text-[10px] font-bold">
+                  ⛳
+                </div>
+              )}
+
+              <div className={cn('flex flex-col gap-2', isUser ? 'items-end max-w-[82%]' : 'items-start w-full')}>
+                {/* Bubble */}
+                <div className={cn(
                   'rounded-2xl px-4 py-2.5 text-sm leading-relaxed',
-                  message.role === 'user'
+                  isUser
                     ? 'bg-green-600 text-white rounded-tr-sm'
                     : 'bg-gray-100 text-gray-900 rounded-tl-sm'
+                )}>
+                  {isUser ? (
+                    <p>{message.content}</p>
+                  ) : (
+                    <div className="prose prose-sm max-w-none prose-p:my-1 prose-strong:font-semibold prose-strong:text-gray-900">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          h1: ({ children }) => <p className="font-semibold">{children}</p>,
+                          h2: ({ children }) => <p className="font-semibold">{children}</p>,
+                          h3: ({ children }) => <p className="font-semibold">{children}</p>,
+                          a: ({ href, children }) => (
+                            <a href={href} target="_blank" rel="noopener noreferrer" className="text-green-700 underline underline-offset-2">{children}</a>
+                          ),
+                          ul: ({ children }) => <ul className="my-1 pl-4 list-disc space-y-0.5">{children}</ul>,
+                          li: ({ children }) => <li>{children}</li>,
+                          p: ({ children }) => <p className="my-1">{children}</p>,
+                        }}
+                      >
+                        {displayText}
+                      </ReactMarkdown>
+                    </div>
+                  )}
+                </div>
+
+                {/* Tee time results — clean comparison strip, outside bubble */}
+                {message.tee_times && message.tee_times.length > 0 && (
+                  <TeeTimeResults
+                    teeTimes={message.tee_times.slice(0, 3)}
+                    totalCount={message.tee_times.length}
+                  />
                 )}
-              >
-                {message.role === 'assistant' ? (
-                  <div className="prose prose-sm max-w-none prose-p:my-1 prose-p:leading-relaxed prose-strong:text-gray-900 prose-strong:font-semibold">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        // No headers — strip them to bold text
-                        h1: ({ children }) => <p className="font-semibold">{children}</p>,
-                        h2: ({ children }) => <p className="font-semibold">{children}</p>,
-                        h3: ({ children }) => <p className="font-semibold">{children}</p>,
-                        // Links open in new tab
-                        a: ({ href, children }) => (
-                          <a href={href} target="_blank" rel="noopener noreferrer" className="text-green-700 underline underline-offset-2">
-                            {children}
-                          </a>
-                        ),
-                        // Tight lists
-                        ul: ({ children }) => <ul className="my-1 space-y-0.5 pl-4 list-disc">{children}</ul>,
-                        ol: ({ children }) => <ol className="my-1 space-y-0.5 pl-4 list-decimal">{children}</ol>,
-                        li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-                        p: ({ children }) => <p className="my-1">{children}</p>,
-                        hr: () => <div className="my-2 border-t border-gray-200" />,
-                      }}
-                    >
-                      {message.content}
-                    </ReactMarkdown>
+
+                {/* Quick-action chips — only on last assistant message */}
+                {!isUser && chips.length > 0 && isLast && !isLoading && (
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                    {chips.map((chip) => (
+                      <button
+                        key={chip}
+                        onClick={() => sendMessage(chip)}
+                        className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-600 hover:border-green-400 hover:bg-green-50 hover:text-green-800 transition-all"
+                      >
+                        {chip}
+                      </button>
+                    ))}
                   </div>
-                ) : (
-                  <p>{message.content}</p>
                 )}
               </div>
-
-              {/* Tee time results — outside the bubble, clean comparison strip */}
-              {message.tee_times && message.tee_times.length > 0 && (
-                <TeeTimeResults
-                  teeTimes={message.tee_times.slice(0, 3)}
-                  totalCount={message.tee_times.length}
-                />
-              )}
             </div>
-          </div>
-        ))}
+          )
+        })}
 
+        {/* Typing indicator */}
         {isLoading && (
-          <div className="flex gap-3 justify-start">
-            <div className="shrink-0 h-7 w-7 rounded-full bg-green-600 flex items-center justify-center text-white text-xs font-bold">
-              AI
-            </div>
+          <div className="flex gap-2.5 justify-start">
+            <div className="shrink-0 h-6 w-6 rounded-full bg-green-600 flex items-center justify-center text-[10px]">⛳</div>
             <div className="bg-gray-100 rounded-2xl rounded-tl-sm px-4 py-3">
               <div className="flex gap-1 items-center h-4">
                 <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -280,9 +303,7 @@ export function ChatInterface({
             </svg>
           </button>
         </div>
-        <p className="mt-1.5 text-center text-[11px] text-gray-400">
-          18 Boston public courses · live data
-        </p>
+        <p className="mt-1.5 text-center text-[11px] text-gray-400">18 Boston public courses · live data</p>
       </div>
     </div>
   )
