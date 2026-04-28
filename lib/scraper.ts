@@ -34,13 +34,94 @@ interface GolfNowSlot {
   }>
 }
 
-function getCourseBookingUrl(course: Pick<Course, 'name' | 'website'>): string {
+type BookingIntegration =
+  | { provider: 'cps'; url: string }
+  | { provider: 'foreup'; url: string }
+  | { provider: 'teeitup'; url: string; course: string }
+  | { provider: 'chronogolf'; url: string }
+  | { provider: 'teequest'; url: string }
+  | { provider: 'northstar'; url: string }
+  | { provider: 'official'; url: string }
+  | { provider: 'phone'; url: string }
+
+const BOOKING_INTEGRATIONS: Record<string, BookingIntegration> = {
+  'fresh-pond': { provider: 'official', url: 'https://freshpondgolf.com/policies/tee-times/' },
+  'william-devine': { provider: 'cps', url: 'https://williamjdevine.cps.golf' },
+  'george-wright': { provider: 'cps', url: 'https://georgewright.cps.golf' },
+  'ponkapoag-1': { provider: 'official', url: 'https://www.mass.gov/locations/ponkapoag-golf-course' },
+  'ponkapoag-2': { provider: 'official', url: 'https://www.mass.gov/locations/ponkapoag-golf-course' },
+  'putterham-meadows': { provider: 'foreup', url: 'https://foreupsoftware.com/index.php/booking/19865/2748#teetimes' },
+  'granite-links': { provider: 'northstar', url: 'https://www.granitelinksgolfclub.com/web/pages/reserve-a-tee-time' },
+  'presidents': { provider: 'teeitup', url: 'https://presidents-golf-course.book.teeitup.com/', course: '17943' },
+  'furnace-brook': { provider: 'foreup', url: 'https://www.furnacebrookgolf.com/' },
+  'braintree-municipal': { provider: 'official', url: 'https://www.braintreegolf.com/book-tee-times/' },
+  'widows-walk': { provider: 'foreup', url: 'https://widowswalkgolf.com/' },
+  'juniper-hill': { provider: 'chronogolf', url: 'https://www.chronogolf.com/club/juniper-hill-golf-course' },
+  'pinecrest': { provider: 'chronogolf', url: 'https://www.chronogolf.com/club/pinecrest-golf-club-massachusetts' },
+  'maplegate': { provider: 'teeitup', url: 'https://maplegate-country-club.book.teeitup.com/', course: '54f14d340c8ad60378b03704' },
+  'butter-brook': { provider: 'cps', url: 'https://butterbrook.cps.golf' },
+  'easton-cc': { provider: 'teequest', url: 'https://www.eastoncountryclub.com/teetimes' },
+  'new-england-cc': { provider: 'official', url: 'https://www.golfnow.com/best-deals/facility/4330-new-england-country-club/search' },
+  'foxborough-cc': { provider: 'phone', url: 'https://www.foxboroughcc.com/about/public-play' },
+}
+
+function getCourseFallbackUrl(course: Pick<Course, 'name' | 'website'>): string {
   return course.website ||
     `https://www.google.com/search?q=${encodeURIComponent(course.name + ' tee times reservation')}`
 }
 
 function isGolfNowFacilityUrl(url: string | null | undefined): boolean {
   return Boolean(url?.includes('golfnow.com/tee-times/facility/'))
+}
+
+function getGolfNowSearchUrl(
+  course: Pick<Course, 'golfnow_facility_id' | 'golfnow_slug'>,
+  date: string
+): string | null {
+  if (!course.golfnow_facility_id || !course.golfnow_slug) return null
+  const [year, month, day] = date.split('-')
+  const formattedDate = `${month}/${day}/${year}`
+  return `https://www.golfnow.com/tee-times/facility/${course.golfnow_facility_id}-${course.golfnow_slug}/search#sortby=Time&view=Grouplist&holes=18&players=0&time=all&date=${formattedDate}`
+}
+
+function normalizeBookingUrl(url: string | null | undefined): string | null {
+  if (!url || typeof url !== 'string') return null
+  if (url.startsWith('http://') || url.startsWith('https://')) return url
+  if (url.startsWith('//')) return `https:${url}`
+  if (url.startsWith('/')) return `https://www.golfnow.com${url}`
+  return null
+}
+
+function isUsefulSlotBookingUrl(url: string | null | undefined): boolean {
+  const normalized = normalizeBookingUrl(url)
+  return Boolean(normalized && !isGolfNowFacilityUrl(normalized))
+}
+
+function withDateParam(url: string, date: string): string {
+  const joiner = url.includes('?') ? '&' : '?'
+  return `${url}${joiner}date=${date}`
+}
+
+function getCourseBookingUrl(
+  course: Pick<Course, 'name' | 'slug' | 'website' | 'golfnow_facility_id' | 'golfnow_slug'>,
+  date: string,
+  slotBookingUrl?: string | null
+): string {
+  const normalizedSlotUrl = normalizeBookingUrl(slotBookingUrl)
+  if (isUsefulSlotBookingUrl(normalizedSlotUrl)) return normalizedSlotUrl!
+
+  const integration = BOOKING_INTEGRATIONS[course.slug]
+  if (integration) {
+    if (integration.provider === 'teeitup') {
+      return `${integration.url}?course=${encodeURIComponent(integration.course)}&date=${date}`
+    }
+    if (integration.provider === 'chronogolf') {
+      return withDateParam(integration.url, date)
+    }
+    return integration.url
+  }
+
+  return getGolfNowSearchUrl(course, date) || getCourseFallbackUrl(course)
 }
 
 // Fetch tee times for a single course on a single date via GolfNow API
@@ -112,6 +193,9 @@ function parseGolfNowApiResponse(
     const greenFee = ((firstRate.GreenFee || firstRate.greenFee || 0) as number)
     const cartFee = ((firstRate.CartFee || firstRate.cartFee || 0) as number)
     const totalFee = ((firstRate.TotalFee || firstRate.totalFee || greenFee + cartFee) as number)
+    const bookingUrl = normalizeBookingUrl(
+      (s.BookingUrl || s.bookingUrl || s.booking_url || s.Url || s.url || '') as string
+    )
 
     if (time && totalFee > 0) {
       teeTimes.push({
@@ -121,7 +205,8 @@ function parseGolfNowApiResponse(
         rate: { greenFee, cartFee, totalFee },
         cartRequired,
         holes18: holes === 18,
-        bookingUrl: `https://www.golfnow.com/tee-times/facility/${facilityId}-${golfnowSlug}/search`,
+        bookingUrl: bookingUrl ||
+          `https://www.golfnow.com/tee-times/facility/${facilityId}-${golfnowSlug}/search`,
       })
     }
   }
@@ -275,7 +360,7 @@ export async function scrapeAllCourses(daysAhead = 7) {
 
         // If scraping returned nothing, use demo data so the app still works
         if (teeTimes.length === 0) {
-          const bookingUrl = getCourseBookingUrl(course)
+          const bookingUrl = getCourseBookingUrl(course, date)
           const demoRows = generateDemoTeeTimes(
             course.id,
             date,
@@ -303,7 +388,7 @@ export async function scrapeAllCourses(daysAhead = 7) {
           price_per_player: tt.rate.totalFee,
           cart_included: tt.cartRequired,
           walking_allowed: !tt.cartRequired,
-          booking_url: getCourseBookingUrl(course),
+          booking_url: getCourseBookingUrl(course, date, tt.bookingUrl),
           source: 'golfnow',
         }))
 
@@ -443,7 +528,7 @@ function generateInMemoryDemo(params: {
         )
         if (params.max_price && price > params.max_price) continue
 
-        const bookingUrl = getCourseBookingUrl(course)
+        const bookingUrl = getCourseBookingUrl(course, date)
 
         results.push({
           id: `demo-${raw.slug}-${date}-${time.replace(':', '')}`,
@@ -546,10 +631,10 @@ export async function queryTeeTimes(params: {
   }
 
   return results.map((tt) => {
-    if (!isGolfNowFacilityUrl(tt.booking_url) || !tt.course) return tt
+    if (!tt.course) return tt
     return {
       ...tt,
-      booking_url: getCourseBookingUrl(tt.course),
+      booking_url: getCourseBookingUrl(tt.course, tt.tee_date, tt.booking_url),
     }
   })
 }
