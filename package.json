@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "eval": "node scripts/eval.mjs",
-    "eval:local": "EVAL_MODE=local node scripts/eval.mjs"
+    "eval:local": "EVAL_MODE=local node scripts/eval.mjs",
+    "eval:booking": "node scripts/eval-booking-journeys.mjs",
+    "eval:booking:browser": "BOOKING_EVAL_MODE=browser node scripts/eval-booking-journeys.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",

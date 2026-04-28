@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "description": "TeeTime AI regression evals for availability, link reliability, and chat behavior.",
+  "description": "TeeTime AI regression evals for availability and chat behavior. Browser booking journeys live in evals/booking-journeys.json.",
   "tasks": [
     {
       "id": "availability_foursome_cambridge_morning",
@@ -176,8 +176,8 @@
       }
     },
     {
-      "id": "link_reliability_course_direct",
-      "suite": "link_reliability",
+      "id": "booking_intent_course_direct",
+      "suite": "booking_intent",
       "messages": [
         "Show me any walking slots tomorrow before 9am"
       ],

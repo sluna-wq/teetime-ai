@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "description": "Browser/computer-use booking journey evals. These grade whether an agent can navigate from a TeeTime AI Reserve target into the correct third-party booking flow, not whether a URL merely responds.",
+  "journeys": [
+    {
+      "id": "fresh_pond_booking_flow",
+      "course": "Fresh Pond Golf Course",
+      "entryUrl": "https://www.freshpondgolf.com",
+      "target": {
+        "date": "tomorrow",
+        "time": "08:30",
+        "players": 4,
+        "holes": 18
+      },
+      "agentGoal": "Navigate like a user from the course site to the tee-time booking surface, set or confirm the requested date if the site allows it, and stop before login, payment, or final reservation.",
+      "successSignals": {
+        "courseNameAnyOf": ["Fresh Pond", "Fresh Pond Golf Course"],
+        "bookingIntentAnyOf": ["tee time", "book", "booking", "reserve", "chronogolf", "foreup", "golfnow"],
+        "dateContext": "target-date-visible-or-selected-or-date-picker-open",
+        "stopBeforeAnyOf": ["payment", "checkout", "confirm reservation", "book now final submit"]
+      }
+    },
+    {
+      "id": "brookline_putterham_booking_flow",
+      "course": "Putterham Meadows Golf Club",
+      "entryUrl": "https://www.brooklinegolf.com",
+      "target": {
+        "date": "nextSaturday",
+        "time": "11:20",
+        "players": 4,
+        "holes": 18
+      },
+      "agentGoal": "Navigate like a user from Brookline Golf Course to online tee times for Putterham/Robert T. Lynch, set or confirm the requested date if possible, and stop before login, payment, or final reservation.",
+      "successSignals": {
+        "courseNameAnyOf": ["Brookline Golf Course", "Robert T. Lynch", "Putterham"],
+        "bookingIntentAnyOf": ["tee time", "book", "booking", "reserve", "foreup"],
+        "dateContext": "target-date-visible-or-selected-or-date-picker-open",
+        "stopBeforeAnyOf": ["payment", "checkout", "confirm reservation", "book now final submit"]
+      }
+    },
+    {
+      "id": "granite_links_booking_flow",
+      "course": "Granite Links",
+      "entryUrl": "https://www.granitelinks.com/golf/tee-times",
+      "target": {
+        "date": "tomorrow",
+        "time": "09:20",
+        "players": 4,
+        "holes": 18
+      },
+      "agentGoal": "Navigate like a user to Granite Links tee-time booking, set or confirm the requested date if possible, and stop before login, payment, or final reservation.",
+      "successSignals": {
+        "courseNameAnyOf": ["Granite Links"],
+        "bookingIntentAnyOf": ["tee time", "book", "booking", "reserve", "foreup", "golfnow"],
+        "dateContext": "target-date-visible-or-selected-or-date-picker-open",
+        "stopBeforeAnyOf": ["payment", "checkout", "confirm reservation", "book now final submit"]
+      }
+    },
+    {
+      "id": "city_of_boston_devine_booking_flow",
+      "course": "William J. Devine Golf Course",
+      "entryUrl": "https://www.cityofbostongolf.com/franklin-park",
+      "target": {
+        "date": "tomorrow",
+        "time": "08:50",
+        "players": 4,
+        "holes": 18
+      },
+      "agentGoal": "Navigate like a user from the Franklin Park page to the William J. Devine tee-time booking surface, set or confirm the requested date if possible, and stop before login, payment, or final reservation.",
+      "successSignals": {
+        "courseNameAnyOf": ["William J. Devine", "Franklin Park", "City of Boston Golf"],
+        "bookingIntentAnyOf": ["tee time", "book", "booking", "reserve"],
+        "dateContext": "target-date-visible-or-selected-or-date-picker-open",
+        "stopBeforeAnyOf": ["payment", "checkout", "confirm reservation", "book now final submit"]
+      }
+    }
+  ]
+}

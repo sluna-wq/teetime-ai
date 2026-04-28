@@ -10,7 +10,6 @@ const tasksPath = path.join(repoRoot, 'evals', 'tasks.json')
 
 const MODE = process.env.EVAL_MODE || getArg('--mode') || 'fixture'
 const BASE_URL = process.env.EVAL_BASE_URL || getArg('--base-url') || 'http://localhost:3000'
-const CHECK_LINKS = process.env.EVAL_CHECK_LINKS === '1' || process.argv.includes('--check-links')
 const TRIALS = Number(process.env.EVAL_TRIALS || getArg('--trials') || (MODE === 'local' ? 3 : 1))
 const TODAY = parseDate(process.env.EVAL_TODAY || new Date().toISOString().slice(0, 10))
 
@@ -289,7 +288,7 @@ async function gradeTask(task, run, trial) {
 
   gradeResultConstraints(checks, expected, run.searchResults)
   gradeChatGrounding(checks, task, expected, run)
-  await gradeLinks(checks, run.searchResults)
+  gradeBookingTargets(checks, run.searchResults)
 
   const pass = checks.every((c) => c.pass)
   return { id: task.id, suite: task.suite, trial, pass, checks, run }
@@ -413,7 +412,7 @@ function gradeChatGrounding(checks, task, expected, run) {
   }
 }
 
-async function gradeLinks(checks, results) {
+function gradeBookingTargets(checks, results) {
   const allowedHosts = [
     'freshpondgolf.com',
     'cityofbostongolf.com',
@@ -431,42 +430,19 @@ async function gradeLinks(checks, results) {
     let url
     try {
       url = new URL(result.booking_url)
-      check(checks, `link ${result.id} valid URL`, true)
+      check(checks, `booking target ${result.id} valid URL`, true)
     } catch {
-      check(checks, `link ${result.id} valid URL`, false, {
+      check(checks, `booking target ${result.id} valid URL`, false, {
         expected: 'absolute URL',
         actual: result.booking_url
       })
       continue
     }
 
-    check(checks, `link ${result.id} allowed host`, allowedHosts.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`)), {
+    check(checks, `booking target ${result.id} known host`, allowedHosts.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`)), {
       expected: allowedHosts.join(', '),
       actual: url.hostname
     })
-
-    if (CHECK_LINKS) {
-      const reachable = await isReachable(url)
-      check(checks, `link ${result.id} reachable`, reachable.pass, {
-        expected: 'HTTP 2xx/3xx/401/403/405',
-        actual: reachable.status
-      })
-    }
-  }
-}
-
-async function isReachable(url) {
-  try {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 10000)
-    const response = await fetch(url, { method: 'HEAD', redirect: 'manual', signal: controller.signal })
-    clearTimeout(timer)
-    if ([401, 403, 405].includes(response.status) || (response.status >= 200 && response.status < 400)) {
-      return { pass: true, status: response.status }
-    }
-    return { pass: false, status: response.status }
-  } catch (err) {
-    return { pass: false, status: err instanceof Error ? err.message : String(err) }
   }
 }
 
@@ -551,7 +527,6 @@ function printSummary(results) {
     console.log(`  ${suite}: ${value.passed}/${value.total}`)
   }
   console.log(`  mode: ${MODE}`)
-  console.log(`  live link checks: ${CHECK_LINKS ? 'on' : 'off'}`)
 }
 
 function stringify(value) {

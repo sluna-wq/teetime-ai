@@ -20,7 +20,9 @@ type BookingIntegration =
   | { provider: 'foreup'; url: string }
   | { provider: 'teeitup'; url: string; course: string }
   | { provider: 'chronogolf'; url: string }
+  | { provider: 'teesnap'; url: string }
   | { provider: 'teequest'; url: string }
+  | { provider: 'clubcaddie'; url: string }
   | { provider: 'northstar'; url: string }
   | { provider: 'official'; url: string }
   | { provider: 'phone'; url: string }
@@ -37,12 +39,12 @@ const BOOKING_INTEGRATIONS: Record<string, BookingIntegration> = {
   'furnace-brook': { provider: 'foreup', url: 'https://foreupsoftware.com/index.php/booking/23086/8988#teetimes' },
   'braintree-municipal': { provider: 'official', url: 'https://www.braintreegolf.com/book-tee-times/' },
   'widows-walk': { provider: 'foreup', url: 'https://foreupsoftware.com/index.php/booking/20615/5120#teetimes' },
-  'juniper-hill': { provider: 'chronogolf', url: 'https://www.chronogolf.com/club/juniper-hill-golf-course' },
-  'pinecrest': { provider: 'chronogolf', url: 'https://www.chronogolf.com/club/pinecrest-golf-club-massachusetts' },
+  'juniper-hill': { provider: 'cps', url: 'https://juniperhill.cps.golf' },
+  'pinecrest': { provider: 'clubcaddie', url: 'https://customer-cc37.clubcaddie.com/login?clubid=103412' },
   'maplegate': { provider: 'teeitup', url: 'https://maplegate-country-club.book.teeitup.com/', course: '54f14d340c8ad60378b03704' },
   'butter-brook': { provider: 'cps', url: 'https://butterbrook.cps.golf' },
   'easton-cc': { provider: 'teequest', url: 'https://www.eastoncountryclub.com/teetimes' },
-  'new-england-cc': { provider: 'official', url: 'https://www.golfnow.com/best-deals/facility/4330-new-england-country-club/search' },
+  'new-england-cc': { provider: 'teesnap', url: 'https://newenglandcc.teesnap.net/' },
   'foxborough-cc': { provider: 'phone', url: 'https://www.foxboroughcc.com/about/public-play' },
 }
 
@@ -96,7 +98,7 @@ function getCourseBookingUrl(
     if (integration.provider === 'teeitup') {
       return `${integration.url}?course=${encodeURIComponent(integration.course)}&date=${date}`
     }
-    if (integration.provider === 'chronogolf') {
+    if (integration.provider === 'chronogolf' || integration.provider === 'teesnap') {
       return withDateParam(integration.url, date)
     }
     return integration.url
