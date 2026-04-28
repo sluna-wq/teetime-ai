@@ -5,7 +5,6 @@ import dynamic from 'next/dynamic'
 import type { Course, TeeTime } from '@/types'
 import { ChatInterface } from '@/components/ChatInterface'
 
-// Map must be client-only (uses Mapbox GL which requires window)
 const Map = dynamic(() => import('@/components/Map').then((m) => m.Map), {
   ssr: false,
   loading: () => (
@@ -20,13 +19,11 @@ export default function Home() {
   const [teeTimes, setTeeTimes] = useState<TeeTime[]>([])
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null)
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
-  const [mobileTab, setMobileTab] = useState<'chat' | 'map'>('chat')
+  const [mapOpen, setMapOpen] = useState(false)
 
   const handleTeeTimes = useCallback((tts: TeeTime[]) => {
     setTeeTimes(tts)
-    const ttCourses = tts
-      .map((tt) => tt.course)
-      .filter((c): c is Course => !!c)
+    const ttCourses = tts.map((tt) => tt.course).filter((c): c is Course => !!c)
     if (ttCourses.length > 0) {
       setCourses((prev) => {
         const existingIds = new Set(prev.map((c) => c.id))
@@ -36,61 +33,45 @@ export default function Home() {
     }
   }, [])
 
-  const handleCourses = useCallback((c: Course[]) => {
-    setCourses(c)
-  }, [])
+  const handleCourses = useCallback((c: Course[]) => setCourses(c), [])
 
   return (
-    <div className="flex h-screen flex-col bg-gray-50">
+    <div className="flex h-screen flex-col bg-white">
       {/* Header */}
-      <header className="flex items-center justify-between border-b border-gray-100 bg-white px-4 py-3 shrink-0">
+      <header className="flex items-center justify-between border-b border-gray-100 bg-white px-4 py-3 shrink-0 z-10">
         <div className="flex items-center gap-2.5">
-          <span className="text-2xl">⛳</span>
+          <span className="text-xl">⛳</span>
           <div>
-            <h1 className="text-base font-bold text-gray-900 leading-tight">TeeTime AI</h1>
-            <p className="text-xs text-gray-400 leading-tight">Boston public golf · 18 courses</p>
+            <h1 className="text-sm font-bold text-gray-900 leading-tight">TeeTime AI</h1>
+            <p className="text-[11px] text-gray-400 leading-tight">18 Boston public courses</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <div className="hidden sm:flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1">
+          <div className="flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-1">
             <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-500" />
-            <span className="text-xs font-medium text-green-700">Live · 30 min refresh</span>
+            <span className="text-[11px] font-medium text-green-700">Live</span>
           </div>
+          <button
+            onClick={() => setMapOpen((o) => !o)}
+            className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${
+              mapOpen
+                ? 'border-green-400 bg-green-50 text-green-700'
+                : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+            }`}
+          >
+            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21" />
+              <line x1="9" y1="3" x2="9" y2="18" /><line x1="15" y1="6" x2="15" y2="21" />
+            </svg>
+            Map{teeTimes.length > 0 && <span className="ml-0.5 text-green-600 font-semibold">{teeTimes.length}</span>}
+          </button>
         </div>
       </header>
 
-      {/* Mobile tab switcher */}
-      <div className="flex border-b border-gray-100 bg-white md:hidden shrink-0">
-        <button
-          onClick={() => setMobileTab('chat')}
-          className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
-            mobileTab === 'chat' ? 'border-b-2 border-green-600 text-green-700' : 'text-gray-500'
-          }`}
-        >
-          Chat
-        </button>
-        <button
-          onClick={() => setMobileTab('map')}
-          className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
-            mobileTab === 'map' ? 'border-b-2 border-green-600 text-green-700' : 'text-gray-500'
-          }`}
-        >
-          Map{teeTimes.length > 0 && (
-            <span className="ml-1 rounded-full bg-green-100 px-1.5 text-xs text-green-700">
-              {teeTimes.length}
-            </span>
-          )}
-        </button>
-      </div>
-
-      {/* Main content */}
+      {/* Body */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Chat panel */}
-        <div
-          className={`flex flex-col overflow-hidden md:flex md:w-[420px] md:shrink-0 md:border-r md:border-gray-100 md:bg-white ${
-            mobileTab === 'chat' ? 'flex w-full bg-white' : 'hidden'
-          }`}
-        >
+        {/* Chat — always full width, shrinks when map opens */}
+        <div className={`flex flex-col overflow-hidden bg-white transition-all duration-300 ${mapOpen ? 'w-[420px] shrink-0 border-r border-gray-100' : 'w-full'}`}>
           <ChatInterface
             onTeeTimes={handleTeeTimes}
             onCourses={handleCourses}
@@ -101,18 +82,18 @@ export default function Home() {
           />
         </div>
 
-        {/* Map panel */}
-        <div
-          className={`flex-1 p-3 md:flex ${mobileTab === 'map' ? 'flex w-full' : 'hidden'}`}
-        >
-          <Map
-            courses={courses}
-            teeTimes={teeTimes}
-            selectedCourseId={selectedCourseId}
-            onCourseSelect={setSelectedCourseId}
-            userLocation={userLocation}
-          />
-        </div>
+        {/* Map — slides in when toggled */}
+        {mapOpen && (
+          <div className="flex-1 p-3">
+            <Map
+              courses={courses}
+              teeTimes={teeTimes}
+              selectedCourseId={selectedCourseId}
+              onCourseSelect={setSelectedCourseId}
+              userLocation={userLocation}
+            />
+          </div>
+        )}
       </div>
     </div>
   )

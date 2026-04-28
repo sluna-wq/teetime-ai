@@ -23,20 +23,13 @@ const SUGGESTIONS = [
   'Alert me when Fresh Pond opens up Sunday',
 ]
 
-// Parse CHIPS: line from assistant response
-function parseChips(content: string): { text: string; chips: string[] } {
-  const chipsMatch = content.match(/\nCHIPS:\s*(.+)$/m)
-  if (!chipsMatch) return { text: content, chips: [] }
-  const chips = chipsMatch[1].split('|').map((c) => c.trim()).filter(Boolean)
-  const text = content.replace(/\nCHIPS:\s*.+$/m, '').trimEnd()
-  return { text, chips }
-}
-
 // Always prepend location context to every user message sent to the API
 function injectLocation(content: string, loc: { lat: number; lng: number } | null): string {
   if (!loc) return content
   return `[User GPS: ${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}]\n${content}`
 }
+
+type LoadStatus = 'idle' | 'thinking' | 'searching' | 'streaming'
 
 export function ChatInterface({
   onTeeTimes,
@@ -46,13 +39,13 @@ export function ChatInterface({
 }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
+  const [status, setStatus] = useState<LoadStatus>('idle')
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, isLoading])
+  }, [messages, status])
 
   // Request GPS on mount
   useEffect(() => {
@@ -65,15 +58,14 @@ export function ChatInterface({
   }, [userLocation, onSetUserLocation])
 
   const sendMessage = useCallback(async (text: string) => {
-    if (!text.trim() || isLoading) return
+    if (!text.trim() || status !== 'idle') return
 
     const userMessage: ChatMessage = { role: 'user', content: text }
     const newMessages = [...messages, userMessage]
     setMessages(newMessages)
     setInput('')
-    setIsLoading(true)
+    setStatus('thinking')
 
-    // Inject GPS into every user message for the API
     const apiMessages = newMessages.map((m) => ({
       role: m.role,
       content: m.role === 'user' ? injectLocation(m.content, userLocation) : m.content,
@@ -92,9 +84,7 @@ export function ChatInterface({
       const decoder = new TextDecoder()
       let assistantText = ''
       let currentTeeTimes: TeeTime[] = []
-
-      // Add empty assistant message to stream into
-      setMessages((prev) => [...prev, { role: 'assistant', content: '' }])
+      let assistantRowAdded = false
 
       while (true) {
         const { done, value } = await reader.read()
@@ -108,7 +98,17 @@ export function ChatInterface({
           if (data === '[DONE]') break
           try {
             const event = JSON.parse(data)
+
+            if (event.type === 'tool_call' && event.name === 'search_tee_times') {
+              setStatus('searching')
+            }
+
             if (event.type === 'text') {
+              if (!assistantRowAdded) {
+                setMessages((prev) => [...prev, { role: 'assistant', content: '' }])
+                assistantRowAdded = true
+              }
+              setStatus('streaming')
               assistantText += event.text
               setMessages((prev) => {
                 const updated = [...prev]
@@ -143,10 +143,12 @@ export function ChatInterface({
       const msg = err instanceof Error ? err.message : 'Something went wrong'
       setMessages((prev) => [...prev, { role: 'assistant', content: `Sorry — ${msg}` }])
     } finally {
-      setIsLoading(false)
+      setStatus('idle')
       inputRef.current?.focus()
     }
-  }, [messages, isLoading, userLocation, onTeeTimes, onCourses])
+  }, [messages, status, userLocation, onTeeTimes, onCourses])
+
+  const isLoading = status !== 'idle'
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -185,10 +187,7 @@ export function ChatInterface({
           const isUser = message.role === 'user'
           const isLast = i === messages.length - 1
 
-          // Parse chips out of assistant text
-          const { text: displayText, chips } = isUser
-            ? { text: message.content, chips: [] }
-            : parseChips(message.content)
+          const displayText = message.content
 
           return (
             <div key={i} className={cn('flex gap-2.5', isUser ? 'justify-end' : 'justify-start')}>
@@ -239,35 +238,24 @@ export function ChatInterface({
                   />
                 )}
 
-                {/* Quick-action chips — only on last assistant message */}
-                {!isUser && chips.length > 0 && isLast && !isLoading && (
-                  <div className="flex flex-wrap gap-1.5 pt-0.5">
-                    {chips.map((chip) => (
-                      <button
-                        key={chip}
-                        onClick={() => sendMessage(chip)}
-                        className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-600 hover:border-green-400 hover:bg-green-50 hover:text-green-800 transition-all"
-                      >
-                        {chip}
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
             </div>
           )
         })}
 
-        {/* Typing indicator */}
-        {isLoading && (
+        {/* Status indicator — only shows when no text is streaming yet */}
+        {(status === 'thinking' || status === 'searching') && (
           <div className="flex gap-2.5 justify-start">
             <div className="shrink-0 h-6 w-6 rounded-full bg-green-600 flex items-center justify-center text-[10px]">⛳</div>
-            <div className="bg-gray-100 rounded-2xl rounded-tl-sm px-4 py-3">
-              <div className="flex gap-1 items-center h-4">
+            <div className="bg-gray-100 rounded-2xl rounded-tl-sm px-4 py-2.5 flex items-center gap-2">
+              <div className="flex gap-1 items-center">
                 <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                 <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                 <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
               </div>
+              <span className="text-[12px] text-gray-400">
+                {status === 'searching' ? 'Checking tee times…' : 'Thinking…'}
+              </span>
             </div>
           </div>
         )}
