@@ -239,13 +239,17 @@ function eventsToRun(events) {
     .filter((e) => e.type === 'text')
     .map((e) => e.text || '')
     .join('')
+  const errors = events
+    .filter((e) => e.type === 'error')
+    .map((e) => e.message || JSON.stringify(e))
 
   return {
     events,
     searchCalls,
     searchResults,
     recommendationIds: recommendationResult?.result?.slot_ids || [],
-    finalText
+    finalText,
+    errors
   }
 }
 
@@ -253,6 +257,11 @@ async function gradeTask(task, run, trial) {
   const checks = []
   const expected = resolveExpected(task.expected)
   const latestSearch = run.searchCalls.at(-1)?.input || null
+
+  check(checks, 'api errors', run.errors.length === 0, {
+    expected: 'no streamed API errors',
+    actual: run.errors.join('; ') || 'none'
+  })
 
   check(checks, 'search trigger', expected.mustSearch ? run.searchCalls.length > 0 : run.searchCalls.length === 0, {
     expected: expected.mustSearch ? 'search_tee_times call' : 'no search_tee_times call',

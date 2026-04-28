@@ -1,9 +1,5 @@
 import { supabaseAdmin } from './supabase'
-import type { Course, TeeTime } from '@/types'
-import { BOSTON_COURSES } from './courses'
-
-// GolfNow's internal search API — returns JSON, used by their own website
-const GOLFNOW_API = 'https://www.golfnow.com/api/search/tee-times'
+import type { Course } from '@/types'
 
 interface GolfNowTeeTime {
   time: string // "08:00"
@@ -19,21 +15,6 @@ interface GolfNowTeeTime {
   bookingUrl: string
 }
 
-interface GolfNowSlot {
-  TeeTimes: Array<{
-    Time: string
-    Players: number
-    Holes: number
-    Rates: Array<{
-      GreenFee: number
-      CartFee: number
-      TotalFee: number
-    }>
-    CartRequired: boolean
-    BookingUrl: string
-  }>
-}
-
 type BookingIntegration =
   | { provider: 'cps'; url: string }
   | { provider: 'foreup'; url: string }
@@ -45,7 +26,7 @@ type BookingIntegration =
   | { provider: 'phone'; url: string }
 
 const BOOKING_INTEGRATIONS: Record<string, BookingIntegration> = {
-  'fresh-pond': { provider: 'official', url: 'https://freshpondgolf.com/policies/tee-times/' },
+  'fresh-pond': { provider: 'official', url: 'https://secure.cambridgema.gov/webtrac/web/search.html?module=GR' },
   'william-devine': { provider: 'cps', url: 'https://williamjdevine.cps.golf' },
   'george-wright': { provider: 'cps', url: 'https://georgewright.cps.golf' },
   'ponkapoag-1': { provider: 'official', url: 'https://www.mass.gov/locations/ponkapoag-golf-course' },
@@ -53,9 +34,9 @@ const BOOKING_INTEGRATIONS: Record<string, BookingIntegration> = {
   'putterham-meadows': { provider: 'foreup', url: 'https://foreupsoftware.com/index.php/booking/19865/2748#teetimes' },
   'granite-links': { provider: 'northstar', url: 'https://www.granitelinksgolfclub.com/web/pages/reserve-a-tee-time' },
   'presidents': { provider: 'teeitup', url: 'https://presidents-golf-course.book.teeitup.com/', course: '17943' },
-  'furnace-brook': { provider: 'foreup', url: 'https://www.furnacebrookgolf.com/' },
+  'furnace-brook': { provider: 'foreup', url: 'https://foreupsoftware.com/index.php/booking/23086/8988#teetimes' },
   'braintree-municipal': { provider: 'official', url: 'https://www.braintreegolf.com/book-tee-times/' },
-  'widows-walk': { provider: 'foreup', url: 'https://widowswalkgolf.com/' },
+  'widows-walk': { provider: 'foreup', url: 'https://foreupsoftware.com/index.php/booking/20615/5120#teetimes' },
   'juniper-hill': { provider: 'chronogolf', url: 'https://www.chronogolf.com/club/juniper-hill-golf-course' },
   'pinecrest': { provider: 'chronogolf', url: 'https://www.chronogolf.com/club/pinecrest-golf-club-massachusetts' },
   'maplegate': { provider: 'teeitup', url: 'https://maplegate-country-club.book.teeitup.com/', course: '54f14d340c8ad60378b03704' },
@@ -133,9 +114,6 @@ async function fetchGolfNowTeeTimes(
   const [year, month, day] = date.split('-')
   const formattedDate = `${month}/${day}/${year}`
 
-  // GolfNow facility tee times URL pattern
-  const url = `https://www.golfnow.com/tee-times/facility/${facilityId}-${golfnowSlug}/search#sortby=Time&view=Grouplist&holes=18&players=0&time=0780&date=${formattedDate}`
-
   // Try the JSON API endpoint first
   const apiUrl = `https://api.golfnow.com/v1/search/tee-times?facilityId=${facilityId}&date=${formattedDate}&holes=18&players=0&time=all`
 
@@ -156,7 +134,7 @@ async function fetchGolfNowTeeTimes(
     }
 
     const data = await response.json()
-    return parseGolfNowApiResponse(data, facilityId, golfnowSlug, date)
+    return parseGolfNowApiResponse(data, facilityId, golfnowSlug)
   } catch {
     return await scrapeGolfNowPage(facilityId, golfnowSlug, date)
   }
@@ -165,8 +143,7 @@ async function fetchGolfNowTeeTimes(
 function parseGolfNowApiResponse(
   data: unknown,
   facilityId: string,
-  golfnowSlug: string,
-  date: string
+  golfnowSlug: string
 ): GolfNowTeeTime[] {
   // Handle various GolfNow API response shapes
   const teeTimes: GolfNowTeeTime[] = []
@@ -248,7 +225,7 @@ async function scrapeGolfNowPage(
           nextData?.props?.pageProps?.initialData?.teeTimes ||
           []
         if (teeTimesData.length > 0) {
-          return parseGolfNowApiResponse({ TeeTimes: teeTimesData }, facilityId, golfnowSlug, date)
+          return parseGolfNowApiResponse({ TeeTimes: teeTimesData }, facilityId, golfnowSlug)
         }
       } catch { /* fall through */ }
     }
@@ -258,7 +235,7 @@ async function scrapeGolfNowPage(
     if (dataMatch) {
       try {
         const data = JSON.parse(dataMatch[1])
-        return parseGolfNowApiResponse(data, facilityId, golfnowSlug, date)
+        return parseGolfNowApiResponse(data, facilityId, golfnowSlug)
       } catch { /* ignore */ }
     }
 
@@ -267,59 +244,6 @@ async function scrapeGolfNowPage(
     console.error(`Scrape error for facility ${facilityId}:`, err)
     return []
   }
-}
-
-// Generate demo tee times for a course (used when scraping fails / during dev)
-function generateDemoTeeTimes(
-  courseId: string,
-  date: string,
-  priceMin: number,
-  priceMax: number,
-  bookingBase: string
-): Array<{
-  course_id: string
-  tee_date: string
-  tee_time: string
-  holes: number
-  available_spots: number
-  price_per_player: number
-  cart_included: boolean
-  walking_allowed: boolean
-  booking_url: string
-  source: string
-}> {
-  const times = []
-  // Generate realistic morning/afternoon slots
-  const allSlots = [
-    '06:30', '07:00', '07:30', '08:00', '08:30', '09:00', '09:30', '10:00',
-    '10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00',
-    '14:30', '15:00', '15:30', '16:00',
-  ]
-
-  // Randomly remove some slots to simulate realistic availability
-  const seed = courseId.charCodeAt(0) + new Date(date).getDate()
-  const available = allSlots.filter((_, i) => (i + seed) % 3 !== 0)
-
-  for (const time of available) {
-    const priceVariation = Math.random() * (priceMax - priceMin) + priceMin
-    const price = Math.round(priceVariation)
-    const spots = Math.floor(Math.random() * 4) + 1
-
-    times.push({
-      course_id: courseId,
-      tee_date: date,
-      tee_time: time,
-      holes: 18,
-      available_spots: spots,
-      price_per_player: price,
-      cart_included: price > 50,
-      walking_allowed: price < 80,
-      booking_url: bookingBase,
-      source: 'demo' as string,
-    })
-  }
-
-  return times
 }
 
 // Main scrape function — runs for all courses, next N days
@@ -358,24 +282,9 @@ export async function scrapeAllCourses(daysAhead = 7) {
           date
         )
 
-        // If scraping returned nothing, use demo data so the app still works
+        // No verified tee times means no rows. Do not manufacture availability:
+        // Reserve links must only appear for tee times that came from a live source.
         if (teeTimes.length === 0) {
-          const bookingUrl = getCourseBookingUrl(course, date)
-          const demoRows = generateDemoTeeTimes(
-            course.id,
-            date,
-            course.price_min || 30,
-            course.price_max || 60,
-            bookingUrl
-          )
-          totalFound += demoRows.length
-
-          if (demoRows.length > 0) {
-            await supabaseAdmin
-              .from('tee_times')
-              .upsert(demoRows, { onConflict: 'course_id,tee_date,tee_time,holes', ignoreDuplicates: false })
-            totalInserted += demoRows.length
-          }
           continue
         }
 
@@ -455,105 +364,6 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-// Generate demo tee times in-memory from BOSTON_COURSES (no DB required)
-// Used when DB is empty or unavailable — always returns results for the demo
-function generateInMemoryDemo(params: {
-  lat?: number; lng?: number; radius_miles?: number
-  date?: string; date_start?: string; date_end?: string
-  time_start?: string; time_end?: string
-  holes?: number; max_price?: number
-}): TeeTime[] {
-  const today = new Date()
-  const tomorrow = new Date(today)
-  tomorrow.setDate(tomorrow.getDate() + 1)
-  const defaultDate = tomorrow.toISOString().split('T')[0]
-
-  // Build list of dates to generate
-  const dates: string[] = []
-  if (params.date) {
-    dates.push(params.date)
-  } else {
-    const start = new Date(params.date_start || defaultDate)
-    const end = new Date(params.date_end || params.date_start || defaultDate)
-    const cur = new Date(start)
-    while (cur <= end && dates.length < 7) {
-      dates.push(cur.toISOString().split('T')[0])
-      cur.setDate(cur.getDate() + 1)
-    }
-  }
-  if (dates.length === 0) dates.push(defaultDate)
-
-  const allSlots = [
-    '07:00', '07:30', '08:00', '08:30', '09:00', '09:30',
-    '10:00', '10:30', '11:00', '11:30', '12:00', '13:00', '14:00', '15:00',
-  ]
-  const targetHoles = params.holes || 18
-  const results: TeeTime[] = []
-
-  for (const raw of BOSTON_COURSES) {
-    if (!raw.holes_available.includes(targetHoles)) continue
-
-    // Distance filter
-    if (params.lat && params.lng) {
-      const dist = haversineDistanceMiles(params.lat, params.lng, raw.lat, raw.lng)
-      if (dist > (params.radius_miles || 25)) continue
-    }
-
-    const course: Course = {
-      id: `demo-${raw.slug}`,
-      name: raw.name, slug: raw.slug, address: raw.address, city: raw.city,
-      lat: raw.lat, lng: raw.lng,
-      phone: raw.phone || null, website: raw.website || null,
-      golfnow_facility_id: raw.golfnow_facility_id || null,
-      golfnow_slug: raw.golfnow_slug || null,
-      holes_available: raw.holes_available, walking_allowed: raw.walking_allowed,
-      price_range: raw.price_range, price_min: raw.price_min, price_max: raw.price_max,
-      description: raw.description || null, image_url: null,
-      updated_at: new Date().toISOString(),
-    }
-
-    for (const date of dates) {
-      const dateNum = parseInt(date.replace(/-/g, ''), 10)
-      const seed = raw.slug.charCodeAt(0) + (dateNum % 100)
-      const available = allSlots.filter((_, i) => (i + seed) % 3 !== 0)
-
-      for (const time of available) {
-        if (params.time_start && time < params.time_start) continue
-        if (params.time_end && time > params.time_end) continue
-
-        const priceMin = raw.price_min || 30
-        const priceMax = raw.price_max || 60
-        const price = priceMin + Math.round(
-          ((seed + parseInt(time.replace(':', ''), 10)) % 10) / 10 * (priceMax - priceMin)
-        )
-        if (params.max_price && price > params.max_price) continue
-
-        const bookingUrl = getCourseBookingUrl(course, date)
-
-        results.push({
-          id: `demo-${raw.slug}-${date}-${time.replace(':', '')}`,
-          course_id: `demo-${raw.slug}`,
-          course,
-          tee_date: date,
-          tee_time: time,
-          holes: targetHoles,
-          available_spots: 4,
-          price_per_player: price,
-          cart_included: !raw.walking_allowed,
-          walking_allowed: raw.walking_allowed,
-          booking_url: bookingUrl,
-          source: 'course_direct' as const,
-          scraped_at: new Date().toISOString(),
-        })
-      }
-    }
-  }
-
-  return results
-    .sort((a, b) => a.tee_date.localeCompare(b.tee_date) || a.tee_time.localeCompare(b.tee_time))
-    .slice(0, 20)
-}
-
 // Query tee times from DB — called by Claude tool use
 export async function queryTeeTimes(params: {
   lat?: number
@@ -576,6 +386,7 @@ export async function queryTeeTimes(params: {
       course:courses(*)
     `)
     .gte('tee_date', params.date || params.date_start || new Date().toISOString().split('T')[0])
+    .neq('source', 'demo')
     .order('tee_date', { ascending: true })
     .order('tee_time', { ascending: true })
     .limit(20)
@@ -608,8 +419,8 @@ export async function queryTeeTimes(params: {
   const { data, error } = await query
 
   if (error) {
-    console.warn('queryTeeTimes DB error — using in-memory demo data:', error.message)
-    return generateInMemoryDemo(params)
+    console.warn('queryTeeTimes DB error:', error.message)
+    return []
   }
 
   let results = data || []
@@ -625,9 +436,8 @@ export async function queryTeeTimes(params: {
     })
   }
 
-  // DB is empty (scraper hasn't run yet) — fall back to in-memory demo
   if (results.length === 0) {
-    return generateInMemoryDemo(params)
+    return []
   }
 
   return results.map((tt) => {

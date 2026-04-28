@@ -10,7 +10,7 @@ export const BOSTON_COURSES = [
     lat: 42.3814, lng: -71.1497,
     phone: '(617) 349-6282',
     website: 'https://www.cambridgema.gov/golf',
-    golfnow_facility_id: '4506',
+    golfnow_facility_id: '13095',
     golfnow_slug: 'fresh-pond-golf-course',
     holes_available: [9, 18],
     walking_allowed: true,
