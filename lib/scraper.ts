@@ -34,6 +34,15 @@ interface GolfNowSlot {
   }>
 }
 
+function getCourseBookingUrl(course: Pick<Course, 'name' | 'website'>): string {
+  return course.website ||
+    `https://www.google.com/search?q=${encodeURIComponent(course.name + ' tee times reservation')}`
+}
+
+function isGolfNowFacilityUrl(url: string | null | undefined): boolean {
+  return Boolean(url?.includes('golfnow.com/tee-times/facility/'))
+}
+
 // Fetch tee times for a single course on a single date via GolfNow API
 async function fetchGolfNowTeeTimes(
   facilityId: string,
@@ -258,7 +267,7 @@ export async function scrapeAllCourses(daysAhead = 7) {
 
     for (const date of dates) {
       try {
-        let teeTimes = await fetchGolfNowTeeTimes(
+        const teeTimes = await fetchGolfNowTeeTimes(
           course.golfnow_facility_id,
           course.golfnow_slug,
           date
@@ -266,8 +275,7 @@ export async function scrapeAllCourses(daysAhead = 7) {
 
         // If scraping returned nothing, use demo data so the app still works
         if (teeTimes.length === 0) {
-          const bookingUrl = course.website ||
-            `https://www.google.com/search?q=${encodeURIComponent(course.name + ' tee times reservation')}`
+          const bookingUrl = getCourseBookingUrl(course)
           const demoRows = generateDemoTeeTimes(
             course.id,
             date,
@@ -295,7 +303,7 @@ export async function scrapeAllCourses(daysAhead = 7) {
           price_per_player: tt.rate.totalFee,
           cart_included: tt.cartRequired,
           walking_allowed: !tt.cartRequired,
-          booking_url: tt.bookingUrl,
+          booking_url: getCourseBookingUrl(course),
           source: 'golfnow',
         }))
 
@@ -435,8 +443,7 @@ function generateInMemoryDemo(params: {
         )
         if (params.max_price && price > params.max_price) continue
 
-        const bookingUrl = raw.website ||
-          `https://www.google.com/search?q=${encodeURIComponent(raw.name + ' tee times')}`
+        const bookingUrl = getCourseBookingUrl(course)
 
         results.push({
           id: `demo-${raw.slug}-${date}-${time.replace(':', '')}`,
@@ -538,7 +545,13 @@ export async function queryTeeTimes(params: {
     return generateInMemoryDemo(params)
   }
 
-  return results
+  return results.map((tt) => {
+    if (!isGolfNowFacilityUrl(tt.booking_url) || !tt.course) return tt
+    return {
+      ...tt,
+      booking_url: getCourseBookingUrl(tt.course),
+    }
+  })
 }
 
 export function haversineDistanceMiles(
