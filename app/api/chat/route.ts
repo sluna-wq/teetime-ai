@@ -44,18 +44,25 @@ Quality tiers: municipal ($) < public ($$) < semi_private ($$) < premier ($$$)
 **Special occasion / best-in-class:** Granite Links (skyline views, upscale), New England CC (championship conditions)
 **Coastal/South Shore:** Widow's Walk (Scituate), President's Golf Course (Quincy harbor)
 
-When a user asks for "scenic", "historic", "challenging", "good quality", etc. — use this knowledge to bias which courses you highlight in your narrative, even if search_tee_times returns results from many courses.
+When a user asks for "scenic", "historic", "challenging", "good quality", etc. — use this knowledge to bias which courses you highlight.
 
 ## How to present results
-- 2–3 options max. Lead with the best pick and one sentence why.
-- For each: course name, specific time(s), price, holes, walking/cart.
-- End with one short sentence offering to look at different dates or set an alert.
+- Pick the 2–3 best slots. Lead with one sentence on your top pick and why.
+- For each: course name, time, price, holes, walking/cart.
+- Keep it short — the cards in the panel have the full detail.
 - NEVER use ### headers. Use **bold** for course names only.
-- Do NOT include filter suggestions — the UI handles filtering automatically.
-- If panel filters are active (shown as "[Panel filters active: ...]" in the message), acknowledge them briefly if relevant.
+- Do NOT suggest UI filters — the panel handles that automatically.
+- If panel filters are active (shown as "[Panel filters active: ...]"), acknowledge briefly if relevant.
+
+## REQUIRED: Sync your picks to the results panel
+After EVERY search_tee_times call, you MUST:
+1. Write your 2–3 sentence text recommendation (name the specific slots)
+2. Call recommend_tee_times with the exact \`id\` field values (UUIDs) of those 2–3 slots from the search results, in your preferred order (best first)
+
+This is ALWAYS your final action after a search. The recommend call pins your picks to the top of the results panel so the user sees exactly what you described.
 
 ## Booking
-When you show results, tell the user to click Reserve on the card. Do not fabricate booking URLs — the cards handle it.
+Tell the user to click Reserve on the card. Do not fabricate booking URLs.
 
 ## Alerts
 When someone wants to be notified, use create_alert. Ask for email if not provided.
@@ -95,6 +102,21 @@ const tools: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'recommend_tee_times',
+    description: 'Pin your top 2–3 recommended slots to the top of the results panel. ALWAYS call this after search_tee_times, with the id values of the specific slots you mention in your text. This syncs your narrative to the UI.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        slot_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Exact `id` UUID values from the search results, in priority order (best first). 2–3 max.',
+        },
+      },
+      required: ['slot_ids'],
+    },
+  },
+  {
     name: 'get_courses',
     description: 'Get information about Boston-area public golf courses, their locations, prices, and features.',
     input_schema: {
@@ -108,7 +130,7 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: 'create_alert',
-    description: 'Create an email alert to notify the user when tee times matching their criteria become available. Use this when someone says things like "let me know when...", "alert me if...", "notify me when...", or wants to be notified about future openings.',
+    description: 'Create an email alert to notify the user when tee times matching their criteria become available.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -145,10 +167,13 @@ async function handleToolCall(
     return { tee_times: results, count: results.length }
   }
 
-  if (toolName === 'get_courses') {
-    let query = supabaseAdmin.from('courses').select('*').order('name')
+  if (toolName === 'recommend_tee_times') {
+    // Terminal tool — just echoes back the slot_ids to the client; no DB work needed
+    return { success: true, slot_ids: toolInput.slot_ids }
+  }
 
-    const { data } = await query
+  if (toolName === 'get_courses') {
+    const { data } = await supabaseAdmin.from('courses').select('*').order('name')
     if (!data) return { courses: [] }
 
     let courses = data
@@ -165,53 +190,35 @@ async function handleToolCall(
         return d <= radius
       })
     }
-
     return { courses }
   }
 
   if (toolName === 'create_alert') {
     const input = toolInput as {
       email: string
-      date_start?: string
-      date_end?: string
-      time_start?: string
-      time_end?: string
-      holes?: number
-      max_price?: number
-      lat?: number
-      lng?: number
-      radius_miles?: number
+      date_start?: string; date_end?: string
+      time_start?: string; time_end?: string
+      holes?: number; max_price?: number
+      lat?: number; lng?: number; radius_miles?: number
       course_names?: string[]
     }
 
-    // Look up course IDs from names if provided
     let course_ids: string[] | null = null
     if (input.course_names && input.course_names.length > 0) {
       const { data: courses } = await supabaseAdmin
-        .from('courses')
-        .select('id, name')
-        .in('name', input.course_names)
+        .from('courses').select('id, name').in('name', input.course_names)
       course_ids = courses?.map((c) => c.id) || null
     }
 
-    const { data, error } = await supabaseAdmin
-      .from('alerts')
-      .insert({
-        email: input.email,
-        lat: input.lat || null,
-        lng: input.lng || null,
-        radius_miles: input.radius_miles || 25,
-        date_start: input.date_start || null,
-        date_end: input.date_end || null,
-        time_start: input.time_start || null,
-        time_end: input.time_end || null,
-        holes: input.holes || null,
-        max_price: input.max_price || null,
-        course_ids,
-        active: true,
-      })
-      .select()
-      .single()
+    const { data, error } = await supabaseAdmin.from('alerts').insert({
+      email: input.email,
+      lat: input.lat || null, lng: input.lng || null,
+      radius_miles: input.radius_miles || 25,
+      date_start: input.date_start || null, date_end: input.date_end || null,
+      time_start: input.time_start || null, time_end: input.time_end || null,
+      holes: input.holes || null, max_price: input.max_price || null,
+      course_ids, active: true,
+    }).select().single()
 
     if (error) return { success: false, error: error.message }
     return { success: true, alert_id: data.id, message: `Alert created! We'll email ${input.email} as soon as matching tee times open up.` }
@@ -222,7 +229,6 @@ async function handleToolCall(
 
 export async function POST(req: NextRequest) {
   const { messages } = await req.json()
-
   const encoder = new TextEncoder()
 
   const stream = new ReadableStream({
@@ -240,7 +246,7 @@ export async function POST(req: NextRequest) {
             messages: currentMessages,
           })
 
-          // Stream text as it comes
+          // Stream text blocks first
           for (const block of response.content) {
             if (block.type === 'text') {
               controller.enqueue(
@@ -250,14 +256,12 @@ export async function POST(req: NextRequest) {
           }
 
           if (response.stop_reason === 'tool_use') {
-            // Process tool calls
             const toolUseBlocks = response.content.filter((b) => b.type === 'tool_use')
             const toolResults: Anthropic.ToolResultBlockParam[] = []
 
             for (const block of toolUseBlocks) {
               if (block.type !== 'tool_use') continue
 
-              // Stream tool call info to client
               controller.enqueue(
                 encoder.encode(
                   `data: ${JSON.stringify({ type: 'tool_call', name: block.name, input: block.input })}\n\n`
@@ -266,7 +270,6 @@ export async function POST(req: NextRequest) {
 
               const result = await handleToolCall(block.name, block.input as Record<string, unknown>)
 
-              // Stream tool result to client (for map/cards)
               controller.enqueue(
                 encoder.encode(
                   `data: ${JSON.stringify({ type: 'tool_result', name: block.name, result })}\n\n`
@@ -278,14 +281,20 @@ export async function POST(req: NextRequest) {
                 tool_use_id: block.id,
                 content: JSON.stringify(result),
               })
+
+              // recommend_tee_times is always the last action — stop after processing it
+              if (block.name === 'recommend_tee_times') {
+                continueLoop = false
+              }
             }
 
-            // Continue the conversation with tool results
-            currentMessages = [
-              ...currentMessages,
-              { role: 'assistant', content: response.content },
-              { role: 'user', content: toolResults },
-            ]
+            if (continueLoop) {
+              currentMessages = [
+                ...currentMessages,
+                { role: 'assistant', content: response.content },
+                { role: 'user', content: toolResults },
+              ]
+            }
           } else {
             continueLoop = false
           }

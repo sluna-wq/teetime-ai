@@ -34,11 +34,12 @@ interface Props {
   MapComponent: ComponentType<MapProps>
   activeFilters: Set<string>
   onFiltersChange: (f: Set<string>) => void
+  recommendedIds: string[]
 }
 
 const PAGE = 6
 
-export function ResultsPanel({ teeTimes, courses, selectedCourseId, onCourseSelect, userLocation, view, onViewChange, MapComponent, activeFilters, onFiltersChange }: Props) {
+export function ResultsPanel({ teeTimes, courses, selectedCourseId, onCourseSelect, userLocation, view, onViewChange, MapComponent, activeFilters, onFiltersChange, recommendedIds }: Props) {
   const [sort, setSort] = useState<SortKey>('default')
   const [showAll, setShowAll] = useState(false)
 
@@ -76,8 +77,19 @@ export function ResultsPanel({ teeTimes, courses, selectedCourseId, onCourseSele
     return list
   }, [teeTimes, activeFilters, sort])
 
-  const visible = showAll ? filtered : filtered.slice(0, PAGE)
-  const hidden = filtered.length - PAGE
+  // Split: Claude's picks (in recommendation order) + the rest
+  const { recommended, rest } = useMemo(() => {
+    if (recommendedIds.length === 0) return { recommended: [], rest: filtered }
+    const recSet = new Set(recommendedIds)
+    const recMap = new Map(filtered.map((t) => [t.id, t]))
+    const recommended = recommendedIds.map((id) => recMap.get(id)).filter((t): t is TeeTime => !!t)
+    const rest = filtered.filter((t) => !recSet.has(t.id))
+    return { recommended, rest }
+  }, [filtered, recommendedIds])
+
+  const allVisible = [...recommended, ...rest]
+  const visible = showAll ? allVisible : allVisible.slice(0, PAGE)
+  const hidden = allVisible.length - PAGE
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -133,25 +145,63 @@ export function ResultsPanel({ teeTimes, courses, selectedCourseId, onCourseSele
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto px-4 py-3">
-          {filtered.length === 0 ? (
+          {allVisible.length === 0 ? (
             <p className="text-sm text-gray-400 text-center pt-8">No results match those filters</p>
           ) : (
             <>
+              {/* Claude's picks section */}
+              {recommended.length > 0 && (
+                <div className="mb-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-green-600 mb-1.5 px-1">
+                    ★ Claude&apos;s picks
+                  </p>
+                  <div className="space-y-2">
+                    {recommended.map((tt, i) => {
+                      const inView = visible.includes(tt)
+                      if (!inView) return null
+                      return (
+                        <ResultRow key={tt.id} teeTime={tt} rank={i + 1}
+                          isSelected={selectedCourseId === tt.course_id}
+                          isRecommended
+                          onSelect={() => onCourseSelect(tt.course_id === selectedCourseId ? null : tt.course_id)}
+                        />
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Divider + rest */}
+              {recommended.length > 0 && rest.length > 0 && (
+                <div className="flex items-center gap-2 my-3">
+                  <div className="flex-1 h-px bg-gray-100" />
+                  <span className="text-[10px] font-medium text-gray-300 uppercase tracking-wide">All results</span>
+                  <div className="flex-1 h-px bg-gray-100" />
+                </div>
+              )}
+
               <div className="space-y-2">
-                {visible.map((tt, i) => (
-                  <ResultRow key={tt.id} teeTime={tt} rank={i + 1}
-                    isSelected={selectedCourseId === tt.course_id}
-                    onSelect={() => onCourseSelect(tt.course_id === selectedCourseId ? null : tt.course_id)}
-                  />
-                ))}
+                {rest.map((tt, i) => {
+                  const rank = recommended.length + i + 1
+                  const inView = visible.includes(tt)
+                  if (!inView) return null
+                  return (
+                    <ResultRow key={tt.id} teeTime={tt} rank={rank}
+                      isSelected={selectedCourseId === tt.course_id}
+                      isRecommended={false}
+                      onSelect={() => onCourseSelect(tt.course_id === selectedCourseId ? null : tt.course_id)}
+                    />
+                  )
+                })}
               </div>
+
               {!showAll && hidden > 0 && (
                 <button onClick={() => setShowAll(true)}
                   className="mt-3 w-full rounded-xl border border-dashed border-gray-200 py-2.5 text-xs font-medium text-gray-400 hover:border-green-400 hover:text-green-700 transition-colors">
                   Show {hidden} more option{hidden !== 1 ? 's' : ''} ↓
                 </button>
               )}
-              {showAll && filtered.length > PAGE && (
+              {showAll && allVisible.length > PAGE && (
                 <button onClick={() => setShowAll(false)}
                   className="mt-3 w-full rounded-xl border border-dashed border-gray-200 py-2 text-xs font-medium text-gray-400 hover:border-gray-300 transition-colors">
                   Show less ↑
@@ -165,15 +215,19 @@ export function ResultsPanel({ teeTimes, courses, selectedCourseId, onCourseSele
   )
 }
 
-function ResultRow({ teeTime, rank, isSelected, onSelect }: {
-  teeTime: TeeTime; rank: number; isSelected: boolean; onSelect: () => void
+function ResultRow({ teeTime, rank, isSelected, isRecommended, onSelect }: {
+  teeTime: TeeTime; rank: number; isSelected: boolean; isRecommended: boolean; onSelect: () => void
 }) {
   const course = teeTime.course
   return (
     <div
       onClick={onSelect}
       className={`flex items-center gap-3 rounded-xl border px-4 py-3 cursor-pointer transition-all ${
-        isSelected ? 'border-green-400 bg-green-50 shadow-sm' : 'border-gray-100 bg-white hover:border-gray-200 hover:shadow-sm'
+        isSelected
+          ? 'border-green-400 bg-green-50 shadow-sm'
+          : isRecommended
+          ? 'border-green-200 bg-green-50/40 hover:border-green-300 hover:shadow-sm'
+          : 'border-gray-100 bg-white hover:border-gray-200 hover:shadow-sm'
       }`}
     >
       <span className="shrink-0 text-xs font-bold text-gray-300 w-5 text-center">{rank}</span>

@@ -10,6 +10,7 @@ interface Props {
   onTeeTimes: (tts: TeeTime[]) => void
   onCourses: (courses: Course[]) => void
   onSearchContext: (ctx: TeeTimeQuery) => void
+  onRecommendations: (ids: string[]) => void
   userLocation: { lat: number; lng: number } | null
   onSetUserLocation: (loc: { lat: number; lng: number } | null) => void
   activeFilters: Set<string>
@@ -36,7 +37,7 @@ function injectLocation(content: string, loc: { lat: number; lng: number } | nul
   return `[User GPS: ${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}]\n${content}`
 }
 
-export function ChatPanel({ onTeeTimes, onCourses, onSearchContext, userLocation, onSetUserLocation, activeFilters }: Props) {
+export function ChatPanel({ onTeeTimes, onCourses, onSearchContext, onRecommendations, userLocation, onSetUserLocation, activeFilters }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [status, setStatus] = useState<LoadStatus>('idle')
@@ -127,6 +128,10 @@ export function ChatPanel({ onTeeTimes, onCourses, onSearchContext, userLocation
               const r = event.result as { tee_times?: TeeTime[] }
               if (r.tee_times) { currentTeeTimes = r.tee_times; onTeeTimes(r.tee_times) }
             }
+            if (event.type === 'tool_result' && event.name === 'recommend_tee_times') {
+              const r = event.result as { slot_ids?: string[] }
+              if (r.slot_ids) onRecommendations(r.slot_ids)
+            }
             if (event.type === 'tool_result' && event.name === 'get_courses') {
               const r = event.result as { courses?: Course[] }
               if (r.courses) onCourses(r.courses)
@@ -145,7 +150,7 @@ export function ChatPanel({ onTeeTimes, onCourses, onSearchContext, userLocation
       setStatus('idle')
       inputRef.current?.focus()
     }
-  }, [messages, isLoading, userLocation, onTeeTimes, onCourses, onSearchContext, activeFilters])
+  }, [messages, isLoading, userLocation, onTeeTimes, onCourses, onSearchContext, onRecommendations, activeFilters])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(input) }

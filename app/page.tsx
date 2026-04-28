@@ -22,9 +22,11 @@ export default function Home() {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [resultsView, setResultsView] = useState<'list' | 'map'>('list')
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set())
+  const [recommendedIds, setRecommendedIds] = useState<string[]>([])
 
   const handleTeeTimes = useCallback((tts: TeeTime[]) => {
     setTeeTimes(tts)
+    setRecommendedIds([]) // clear until recommend_tee_times fires for this search
     const ttCourses = tts.map((tt) => tt.course).filter((c): c is Course => !!c)
     if (ttCourses.length > 0) {
       setCourses((prev) => {
@@ -44,6 +46,10 @@ export default function Home() {
     if (ctx.max_price && ctx.max_price <= 40) newFilters.add('under40')
     else if (ctx.max_price && ctx.max_price <= 55) newFilters.add('under55')
     setActiveFilters(newFilters)
+  }, [])
+
+  const handleRecommendations = useCallback((ids: string[]) => {
+    setRecommendedIds(ids)
   }, [])
 
   const hasResults = teeTimes.length > 0
@@ -72,6 +78,7 @@ export default function Home() {
           onTeeTimes={handleTeeTimes}
           onCourses={handleCourses}
           onSearchContext={handleSearchContext}
+          onRecommendations={handleRecommendations}
           userLocation={userLocation}
           onSetUserLocation={setUserLocation}
           activeFilters={activeFilters}
@@ -92,6 +99,7 @@ export default function Home() {
             MapComponent={MapView}
             activeFilters={activeFilters}
             onFiltersChange={setActiveFilters}
+            recommendedIds={recommendedIds}
           />
         ) : (
           <EmptyResults />
