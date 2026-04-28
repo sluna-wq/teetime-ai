@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import type { Course, TeeTime, TeeTimeQuery } from '@/types'
+import { timeAgo } from '@/lib/utils'
 import { ChatPanel } from '@/components/ChatPanel'
 import { ResultsPanel } from '@/components/ResultsPanel'
 
@@ -23,10 +24,12 @@ export default function Home() {
   const [resultsView, setResultsView] = useState<'list' | 'map'>('list')
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set())
   const [recommendedIds, setRecommendedIds] = useState<string[]>([])
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null)
 
   const handleTeeTimes = useCallback((tts: TeeTime[]) => {
     setTeeTimes(tts)
-    setRecommendedIds([]) // clear until recommend_tee_times fires for this search
+    setRecommendedIds([])
+    if (tts.length > 0) setLastUpdated(tts[0].scraped_at)
     const ttCourses = tts.map((tt) => tt.course).filter((c): c is Course => !!c)
     if (ttCourses.length > 0) {
       setCourses((prev) => {
@@ -64,7 +67,9 @@ export default function Home() {
             <span>⛳</span>
             <div>
               <p className="text-sm font-bold text-gray-900 leading-none">TeeTime AI</p>
-              <p className="text-[10px] text-gray-400 leading-tight mt-0.5">18 Boston public courses</p>
+              <p className="text-[10px] text-gray-400 leading-tight mt-0.5">
+                {lastUpdated ? `Updated ${timeAgo(lastUpdated)}` : '18 Boston public courses'}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5">
