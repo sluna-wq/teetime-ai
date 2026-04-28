@@ -3,34 +3,27 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import type { TeeTime, Course, ChatMessage } from '@/types'
+import type { TeeTime, Course, ChatMessage, TeeTimeQuery } from '@/types'
 import { cn } from '@/lib/utils'
 
 interface Props {
   onTeeTimes: (tts: TeeTime[]) => void
   onCourses: (courses: Course[]) => void
+  onSearchContext: (ctx: TeeTimeQuery) => void
   userLocation: { lat: number; lng: number } | null
   onSetUserLocation: (loc: { lat: number; lng: number } | null) => void
+  activeFilters: Set<string>
 }
 
 type LoadStatus = 'idle' | 'thinking' | 'searching' | 'streaming'
 
-// Quick filter chips — prepopulate the search query
-interface QuickFilter {
-  key: string
-  label: string
-  value: string  // appended to message
-  active: boolean
+const FILTER_LABELS: Record<string, string> = {
+  walking: 'Walking',
+  under40: '<$40',
+  under55: '<$55',
+  '18holes': '18h',
+  '9holes': '9h',
 }
-
-const INITIAL_FILTERS: Omit<QuickFilter, 'active'>[] = [
-  { key: 'holes18', label: '18 holes', value: '18 holes' },
-  { key: 'holes9',  label: '9 holes',  value: '9 holes'  },
-  { key: 'walk',    label: 'Walking',  value: 'walking preferred' },
-  { key: 'solo',    label: 'Solo',     value: 'just me (1 player)' },
-  { key: 'duo',     label: '2 players',value: '2 players' },
-  { key: 'four',    label: 'Foursome', value: 'foursome (4 players)' },
-]
 
 const SUGGESTIONS = [
   'Morning tee time this Saturday near me',
@@ -43,11 +36,10 @@ function injectLocation(content: string, loc: { lat: number; lng: number } | nul
   return `[User GPS: ${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}]\n${content}`
 }
 
-export function ChatPanel({ onTeeTimes, onCourses, userLocation, onSetUserLocation }: Props) {
+export function ChatPanel({ onTeeTimes, onCourses, onSearchContext, userLocation, onSetUserLocation, activeFilters }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [status, setStatus] = useState<LoadStatus>('idle')
-  const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set())
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const isLoading = status !== 'idle'
@@ -65,39 +57,25 @@ export function ChatPanel({ onTeeTimes, onCourses, userLocation, onSetUserLocati
     }
   }, [userLocation, onSetUserLocation])
 
-  const toggleFilter = (key: string) => {
-    setActiveFilters((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) {
-        next.delete(key)
-      } else {
-        // mutually exclusive groups
-        if (key === 'holes18' || key === 'holes9') { next.delete('holes18'); next.delete('holes9') }
-        if (key === 'solo' || key === 'duo' || key === 'four') { next.delete('solo'); next.delete('duo'); next.delete('four') }
-        if (key === 'walk') { /* can combine with others */ }
-        next.add(key)
-      }
-      return next
-    })
-  }
-
-  const buildMessage = useCallback((text: string) => {
-    const filters = INITIAL_FILTERS.filter((f) => activeFilters.has(f.key)).map((f) => f.value)
-    if (filters.length === 0) return text
-    return `${text} (${filters.join(', ')})`
-  }, [activeFilters])
-
   const sendMessage = useCallback(async (rawText: string) => {
     if (!rawText.trim() || isLoading) return
-    const text = buildMessage(rawText)
 
-    const userMessage: ChatMessage = { role: 'user', content: rawText } // show raw in UI
+    // Append active panel filter context so Claude knows what's already filtered
+    let text = rawText
+    if (activeFilters.size > 0) {
+      const labels = [...activeFilters].map((f) => ({
+        walking: 'walking only', under40: 'under $40', under55: 'under $55',
+        '18holes': '18 holes', '9holes': '9 holes',
+      }[f] || f))
+      text = `${rawText} [Panel filters active: ${labels.join(', ')}]`
+    }
+
+    const userMessage: ChatMessage = { role: 'user', content: rawText }
     const newMessages = [...messages, userMessage]
     setMessages(newMessages)
     setInput('')
     setStatus('thinking')
 
-    // API gets the enriched message with filters + GPS
     const apiMessages = newMessages.map((m, i) => ({
       role: m.role,
       content: m.role === 'user'
@@ -128,7 +106,10 @@ export function ChatPanel({ onTeeTimes, onCourses, userLocation, onSetUserLocati
           if (data === '[DONE]') break
           try {
             const event = JSON.parse(data)
-            if (event.type === 'tool_call' && event.name === 'search_tee_times') setStatus('searching')
+            if (event.type === 'tool_call' && event.name === 'search_tee_times') {
+              setStatus('searching')
+              onSearchContext(event.input as TeeTimeQuery)
+            }
             if (event.type === 'text') {
               if (!rowAdded) {
                 setMessages((prev) => [...prev, { role: 'assistant', content: '' }])
@@ -154,7 +135,6 @@ export function ChatPanel({ onTeeTimes, onCourses, userLocation, onSetUserLocati
         }
       }
 
-      // If we got tee times but no text row yet (tool only, no text), still show results
       if (currentTeeTimes.length > 0 && !rowAdded) {
         onTeeTimes(currentTeeTimes)
       }
@@ -165,7 +145,7 @@ export function ChatPanel({ onTeeTimes, onCourses, userLocation, onSetUserLocati
       setStatus('idle')
       inputRef.current?.focus()
     }
-  }, [messages, isLoading, status, userLocation, onTeeTimes, onCourses, buildMessage])
+  }, [messages, isLoading, userLocation, onTeeTimes, onCourses, onSearchContext, activeFilters])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(input) }
@@ -237,23 +217,18 @@ export function ChatPanel({ onTeeTimes, onCourses, userLocation, onSetUserLocati
         <div ref={bottomRef} />
       </div>
 
-      {/* Quick filter chips */}
-      <div className="px-3 pt-2 pb-1 flex flex-wrap gap-1.5 border-t border-gray-50">
-        {INITIAL_FILTERS.map((f) => (
-          <button
-            key={f.key}
-            onClick={() => toggleFilter(f.key)}
-            className={cn(
-              'rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-all',
-              activeFilters.has(f.key)
-                ? 'border-green-500 bg-green-50 text-green-700'
-                : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
-            )}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
+      {/* Active filters banner — shown when ResultsPanel has filters applied */}
+      {activeFilters.size > 0 && (
+        <div className="px-3 py-2 border-t border-gray-50 bg-green-50/60 flex items-center gap-1.5 flex-wrap">
+          <span className="text-[10px] font-medium text-gray-400">Filtered:</span>
+          {[...activeFilters].map((f) => (
+            <span key={f} className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+              {FILTER_LABELS[f] || f}
+            </span>
+          ))}
+          <span className="text-[10px] text-gray-400 ml-auto italic">adjust in results →</span>
+        </div>
+      )}
 
       {/* Input */}
       <div className="px-3 pb-3 pt-1.5">

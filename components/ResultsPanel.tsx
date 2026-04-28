@@ -32,32 +32,35 @@ interface Props {
   view: 'list' | 'map'
   onViewChange: (v: 'list' | 'map') => void
   MapComponent: ComponentType<MapProps>
+  activeFilters: Set<string>
+  onFiltersChange: (f: Set<string>) => void
 }
 
 const PAGE = 6
 
-export function ResultsPanel({ teeTimes, courses, selectedCourseId, onCourseSelect, userLocation, view, onViewChange, MapComponent }: Props) {
-  const [activeFilters, setActiveFilters] = useState<Set<Filter>>(new Set())
+export function ResultsPanel({ teeTimes, courses, selectedCourseId, onCourseSelect, userLocation, view, onViewChange, MapComponent, activeFilters, onFiltersChange }: Props) {
   const [sort, setSort] = useState<SortKey>('default')
   const [showAll, setShowAll] = useState(false)
 
-  // Reset when new results arrive
+  // Reset pagination + sort when new results arrive
   const [prevLen, setPrevLen] = useState(teeTimes.length)
   if (teeTimes.length !== prevLen) {
-    setShowAll(false); setActiveFilters(new Set()); setSort('default'); setPrevLen(teeTimes.length)
+    setShowAll(false); setSort('default'); setPrevLen(teeTimes.length)
   }
 
   const toggleFilter = (f: Filter) => {
     setShowAll(false)
-    setActiveFilters((prev) => {
-      const next = new Set(prev)
-      if (next.has(f)) { next.delete(f) } else {
+    onFiltersChange((() => {
+      const next = new Set(activeFilters)
+      if (next.has(f)) {
+        next.delete(f)
+      } else {
         if (f === 'under40' || f === 'under55') { next.delete('under40'); next.delete('under55') }
         if (f === '18holes' || f === '9holes') { next.delete('18holes'); next.delete('9holes') }
         next.add(f)
       }
       return next
-    })
+    })())
   }
 
   const filtered = useMemo(() => {

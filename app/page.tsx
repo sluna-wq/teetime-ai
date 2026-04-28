@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import dynamic from 'next/dynamic'
-import type { Course, TeeTime } from '@/types'
+import type { Course, TeeTime, TeeTimeQuery } from '@/types'
 import { ChatPanel } from '@/components/ChatPanel'
 import { ResultsPanel } from '@/components/ResultsPanel'
 
@@ -21,6 +21,7 @@ export default function Home() {
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null)
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [resultsView, setResultsView] = useState<'list' | 'map'>('list')
+  const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set())
 
   const handleTeeTimes = useCallback((tts: TeeTime[]) => {
     setTeeTimes(tts)
@@ -34,6 +35,16 @@ export default function Home() {
   }, [])
 
   const handleCourses = useCallback((c: Course[]) => setCourses(c), [])
+
+  // Called when Claude fires search_tee_times — auto-populate matching filter pills
+  const handleSearchContext = useCallback((ctx: TeeTimeQuery) => {
+    const newFilters = new Set<string>()
+    if (ctx.holes === 18) newFilters.add('18holes')
+    if (ctx.holes === 9) newFilters.add('9holes')
+    if (ctx.max_price && ctx.max_price <= 40) newFilters.add('under40')
+    else if (ctx.max_price && ctx.max_price <= 55) newFilters.add('under55')
+    setActiveFilters(newFilters)
+  }, [])
 
   const hasResults = teeTimes.length > 0
 
@@ -60,8 +71,10 @@ export default function Home() {
         <ChatPanel
           onTeeTimes={handleTeeTimes}
           onCourses={handleCourses}
+          onSearchContext={handleSearchContext}
           userLocation={userLocation}
           onSetUserLocation={setUserLocation}
+          activeFilters={activeFilters}
         />
       </div>
 
@@ -77,6 +90,8 @@ export default function Home() {
             view={resultsView}
             onViewChange={setResultsView}
             MapComponent={MapView}
+            activeFilters={activeFilters}
+            onFiltersChange={setActiveFilters}
           />
         ) : (
           <EmptyResults />
