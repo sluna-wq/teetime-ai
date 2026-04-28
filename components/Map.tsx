@@ -130,19 +130,19 @@ export function Map({ courses, teeTimes, selectedCourseId, onCourseSelect, userL
           maxWidth: '300px',
         }).setHTML(popupHtml)
 
-        el.addEventListener('click', () => {
-          onCourseSelect(isSelected ? null : course.id)
-          // Open popup on click
-          const marker = markersRef.current[course.id]
-          if (marker) marker.togglePopup()
-        })
-
+        // Create marker first so click handler can reference it directly
         const marker = new mapboxGl.Marker({ element: el })
           .setLngLat([course.lng, course.lat])
           .setPopup(popup)
           .addTo(map)
 
         markersRef.current[course.id] = marker
+
+        el.addEventListener('click', (e) => {
+          e.stopPropagation()
+          onCourseSelect(isSelected ? null : course.id)
+          marker.togglePopup()
+        })
       })
 
       // User dot
