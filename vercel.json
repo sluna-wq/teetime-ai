@@ -1,12 +1,10 @@
 {
-  "crons": [
-    {
-      "path": "/api/cron/scrape",
-      "schedule": "*/30 * * * *"
+  "functions": {
+    "app/api/cron/scrape/route.ts": {
+      "maxDuration": 300
     },
-    {
-      "path": "/api/cron/check-alerts",
-      "schedule": "*/30 * * * *"
+    "app/api/cron/check-alerts/route.ts": {
+      "maxDuration": 60
     }
-  ]
+  }
 }
