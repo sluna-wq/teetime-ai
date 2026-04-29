@@ -29,8 +29,8 @@ const BOOKING_INTEGRATIONS: Record<string, BookingIntegration> = {
   'fresh-pond': { provider: 'webtrac', url: 'https://secure.cambridgema.gov/webtrac/web/search.html?display=Detail&module=GR' },
   'william-devine': { provider: 'cps', url: 'https://williamjdevine.cps.golf' },
   'george-wright': { provider: 'cps', url: 'https://georgewright.cps.golf' },
-  'ponkapoag-1': { provider: 'official', url: 'https://www.mass.gov/locations/ponkapoag-golf-course' },
   'ponkapoag-2': { provider: 'official', url: 'https://www.mass.gov/locations/ponkapoag-golf-course' },
+  'newton-commonwealth': { provider: 'foreup', url: 'https://foreupsoftware.com/index.php/booking/21009/6440#teetimes' },
   'putterham-meadows': { provider: 'foreup', url: 'https://foreupsoftware.com/index.php/booking/19865/2748#teetimes' },
   'granite-links': { provider: 'northstar', url: 'https://www.granitelinks.com/reserve-a-tee-time' },
   'presidents': { provider: 'teeitup', url: 'https://presidents-golf-course.book.teeitup.com/', course: '17943' },
@@ -57,6 +57,10 @@ const DEFAULT_SUPPORTED_COURSE_SLUGS = [
   'braintree-municipal',
   'presidents',
   'fresh-pond',
+  'ponkapoag-1',
+  'unicorn-golf',
+  'norwood-cc',
+  'newton-commonwealth',
 ]
 const SUPPORTED_COURSE_SLUGS = new Set(
   (process.env.SUPPORTED_COURSE_SLUGS || DEFAULT_SUPPORTED_COURSE_SLUGS.join(','))
@@ -69,6 +73,9 @@ const VERIFIED_GOLFNOW_FACILITIES: Record<string, { facilityId: string; slug: st
   'braintree-municipal': { facilityId: '16026', slug: 'braintree-municipal-golf-course' },
   'presidents': { facilityId: '17943', slug: 'presidents-golf-course' },
   'widows-walk': { facilityId: '18419', slug: 'widows-walk-golf-course' },
+  'ponkapoag-1': { facilityId: '17927', slug: 'ponkapoag-golf-course' },
+  'unicorn-golf': { facilityId: '13988', slug: 'unicorn-golf-course' },
+  'norwood-cc': { facilityId: '5720', slug: 'norwood-country-club' },
 }
 
 function getCourseFallbackUrl(course: Pick<Course, 'name' | 'website'>): string {
@@ -337,7 +344,7 @@ async function fetchForeUpTeeTimes(
     bookingClass.hidden !== '1' &&
     bookingClass.block_online_booking !== '1' &&
     bookingClass.online_booking_protected !== '1' &&
-    /public|guest|standard/i.test(String(bookingClass.name || ''))
+    /public|guest|standard|non.?resident/i.test(String(bookingClass.name || ''))
   )) || bookingClasses.find((bookingClass) => (
     bookingClass.hidden !== '1' &&
     bookingClass.block_online_booking !== '1' &&
