@@ -45,10 +45,13 @@ const BOOKING_INTEGRATIONS: Record<string, BookingIntegration> = {
   'foxborough-cc': { provider: 'phone', url: 'https://www.foxboroughcc.com/about/public-play' },
 }
 
-const FRESH_TEE_TIME_WINDOW_MINUTES = Number(process.env.TEE_TIME_FRESH_MINUTES || 20)
+const FRESH_TEE_TIME_WINDOW_MINUTES = Number(process.env.TEE_TIME_FRESH_MINUTES || 45)
 const SCRAPE_DAYS_AHEAD = Number(process.env.SCRAPE_DAYS_AHEAD || 15)
+const MAX_SCRAPE_DAYS_AHEAD = Number(process.env.MAX_SCRAPE_DAYS_AHEAD || 7)
+const SCRAPE_COURSE_BATCH_SIZE = Number(process.env.SCRAPE_COURSE_BATCH_SIZE || 3)
+const DEFAULT_SUPPORTED_COURSE_SLUGS = ['putterham-meadows', 'furnace-brook', 'widows-walk']
 const SUPPORTED_COURSE_SLUGS = new Set(
-  (process.env.SUPPORTED_COURSE_SLUGS || '')
+  (process.env.SUPPORTED_COURSE_SLUGS || DEFAULT_SUPPORTED_COURSE_SLUGS.join(','))
     .split(',')
     .map((slug) => slug.trim())
     .filter(Boolean)
@@ -431,14 +434,18 @@ export async function scrapeAllCourses(daysAhead = SCRAPE_DAYS_AHEAD, courseSlug
     return { found: 0, inserted: 0, errors: ['Failed to fetch courses'] }
   }
 
-  const dates = getDatesToScrape(daysAhead)
+  const effectiveDaysAhead = Math.max(0, Math.min(daysAhead, MAX_SCRAPE_DAYS_AHEAD))
+  const dates = getDatesToScrape(effectiveDaysAhead)
 
   const explicitCourseSlugs = new Set(courseSlugs?.filter(Boolean) || [])
-  const coursesToScrape = (courses as Course[]).filter((course) => {
+  const targetCourses = (courses as Course[]).filter((course) => {
     if (explicitCourseSlugs.size > 0) return explicitCourseSlugs.has(course.slug)
     if (SUPPORTED_COURSE_SLUGS.size > 0) return SUPPORTED_COURSE_SLUGS.has(course.slug)
     return true
   })
+  const coursesToScrape = explicitCourseSlugs.size > 0
+    ? targetCourses
+    : await chooseCoursesForThisRun(targetCourses)
 
   for (const course of coursesToScrape) {
 
@@ -512,6 +519,37 @@ export async function scrapeAllCourses(daysAhead = SCRAPE_DAYS_AHEAD, courseSlug
   }
 
   return { found: totalFound, inserted: totalInserted, errors }
+}
+
+async function chooseCoursesForThisRun(courses: Course[]) {
+  if (SCRAPE_COURSE_BATCH_SIZE <= 0 || courses.length <= SCRAPE_COURSE_BATCH_SIZE) return courses
+
+  const latestScrapes = await getLatestScrapeByCourse()
+  return [...courses]
+    .sort((a, b) => {
+      const aLatest = latestScrapes.get(a.id) || 0
+      const bLatest = latestScrapes.get(b.id) || 0
+      if (aLatest !== bLatest) return aLatest - bLatest
+      return a.name.localeCompare(b.name)
+    })
+    .slice(0, SCRAPE_COURSE_BATCH_SIZE)
+}
+
+async function getLatestScrapeByCourse() {
+  const latestByCourse = new Map<string, number>()
+  const { data } = await supabaseAdmin
+    .from('tee_times')
+    .select('course_id, scraped_at')
+    .neq('source', 'demo')
+    .gte('tee_date', new Date().toISOString().split('T')[0])
+    .order('scraped_at', { ascending: false })
+    .limit(1000)
+
+  for (const row of data || []) {
+    if (!row.course_id || !row.scraped_at || latestByCourse.has(row.course_id)) continue
+    latestByCourse.set(row.course_id, new Date(row.scraped_at).getTime())
+  }
+  return latestByCourse
 }
 
 async function deleteCourseDateRows(courseId: string, date: string) {

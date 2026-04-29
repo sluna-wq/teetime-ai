@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 
-const FRESH_MINUTES = Number(process.env.TEE_TIME_FRESH_MINUTES || 20)
+const FRESH_MINUTES = Number(process.env.TEE_TIME_FRESH_MINUTES || 45)
 
 export async function GET() {
   const freshSince = new Date(Date.now() - FRESH_MINUTES * 60 * 1000).toISOString()
