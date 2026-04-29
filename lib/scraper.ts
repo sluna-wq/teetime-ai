@@ -558,7 +558,6 @@ async function deleteCourseDateRows(courseId: string, date: string) {
     .delete()
     .eq('course_id', courseId)
     .eq('tee_date', date)
-    .neq('source', 'demo')
 }
 
 function getDatesToScrape(daysAhead: number): string[] {
