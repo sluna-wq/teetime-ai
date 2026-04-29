@@ -85,9 +85,19 @@ export function ChatPanel({ onTeeTimes, onCourses, onSearchContext, onRecommenda
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
       let assistantText = ''
-      let currentTeeTimes: TeeTime[] = []
+      let pendingTeeTimes: TeeTime[] | null = null
+      let pendingCourses: Course[] | null = null
+      let pendingSearchContext: TeeTimeQuery | null = null
+      let pendingRecommendations: string[] | null = null
       let rowAdded = false
       let sseBuffer = '' // accumulates across chunks — fixes fragmented large events
+
+      const publishPendingResults = () => {
+        if (pendingSearchContext) onSearchContext(pendingSearchContext)
+        if (pendingCourses) onCourses(pendingCourses)
+        if (pendingTeeTimes) onTeeTimes(pendingTeeTimes)
+        if (pendingRecommendations) onRecommendations(pendingRecommendations)
+      }
 
       const handleEvent = (raw: string) => {
         const data = raw.startsWith('data: ') ? raw.slice(6).trim() : raw.trim()
@@ -96,7 +106,7 @@ export function ChatPanel({ onTeeTimes, onCourses, onSearchContext, onRecommenda
           const event = JSON.parse(data)
           if (event.type === 'tool_call' && event.name === 'search_tee_times') {
             setStatus('searching')
-            onSearchContext(event.input as TeeTimeQuery)
+            pendingSearchContext = event.input as TeeTimeQuery
           }
           if (event.type === 'text') {
             if (!rowAdded) {
@@ -113,15 +123,15 @@ export function ChatPanel({ onTeeTimes, onCourses, onSearchContext, onRecommenda
           }
           if (event.type === 'tool_result' && event.name === 'search_tee_times') {
             const r = event.result as { tee_times?: TeeTime[] }
-            if (r.tee_times) { currentTeeTimes = r.tee_times; onTeeTimes(r.tee_times) }
+            if (r.tee_times) pendingTeeTimes = r.tee_times
           }
           if (event.type === 'tool_result' && event.name === 'recommend_tee_times') {
             const r = event.result as { slot_ids?: string[] }
-            if (r.slot_ids) onRecommendations(r.slot_ids)
+            if (r.slot_ids) pendingRecommendations = r.slot_ids
           }
           if (event.type === 'tool_result' && event.name === 'get_courses') {
             const r = event.result as { courses?: Course[] }
-            if (r.courses) onCourses(r.courses)
+            if (r.courses) pendingCourses = r.courses
           }
         } catch { /* malformed JSON — skip */ }
       }
@@ -141,9 +151,7 @@ export function ChatPanel({ onTeeTimes, onCourses, onSearchContext, onRecommenda
       // Flush any remaining buffer content
       if (sseBuffer.startsWith('data: ')) handleEvent(sseBuffer)
 
-      if (currentTeeTimes.length > 0 && !rowAdded) {
-        onTeeTimes(currentTeeTimes)
-      }
+      publishPendingResults()
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Something went wrong'
       setMessages((prev) => [...prev, { role: 'assistant', content: `Sorry — ${msg}` }])
