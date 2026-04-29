@@ -13,8 +13,8 @@ interface Props {
   onSearchContext: (ctx: TeeTimeQuery) => void
   onRecommendations: (ids: string[]) => void
   userLocation: { lat: number; lng: number } | null
-  onSetUserLocation: (loc: { lat: number; lng: number } | null) => void
   activeFilters: Set<string>
+  initialMessage?: string | null
 }
 
 type LoadStatus = 'idle' | 'thinking' | 'searching' | 'streaming'
@@ -30,26 +30,18 @@ function injectLocation(content: string, loc: { lat: number; lng: number } | nul
   return `[User GPS: ${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}]\n${content}`
 }
 
-export function ChatPanel({ onTeeTimes, onCourses, onSearchContext, onRecommendations, userLocation, onSetUserLocation, activeFilters }: Props) {
+export function ChatPanel({ onTeeTimes, onCourses, onSearchContext, onRecommendations, userLocation, activeFilters, initialMessage }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [status, setStatus] = useState<LoadStatus>('idle')
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const initialSentRef = useRef(false)
   const isLoading = status !== 'idle'
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, status])
-
-  useEffect(() => {
-    if (!userLocation && typeof navigator !== 'undefined' && 'geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => onSetUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        () => {}
-      )
-    }
-  }, [userLocation, onSetUserLocation])
 
   const sendMessage = useCallback(async (rawText: string) => {
     if (!rawText.trim() || isLoading) return
@@ -155,6 +147,13 @@ export function ChatPanel({ onTeeTimes, onCourses, onSearchContext, onRecommenda
     }
   }, [messages, isLoading, userLocation, onTeeTimes, onCourses, onSearchContext, onRecommendations, activeFilters])
 
+  useEffect(() => {
+    if (initialMessage && !initialSentRef.current) {
+      initialSentRef.current = true
+      sendMessage(initialMessage)
+    }
+  }, [initialMessage, sendMessage])
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(input) }
   }
@@ -219,7 +218,7 @@ export function ChatPanel({ onTeeTimes, onCourses, onSearchContext, onRecommenda
                 ))}
               </div>
               <span className="text-[11px] text-gray-400">
-                {status === 'searching' ? 'Checking tee times…' : status === 'streaming' ? 'Writing response…' : 'Thinking…'}
+                {status === 'searching' ? 'Checking tee times…' : 'Thinking…'}
               </span>
             </div>
           </div>
