@@ -7,6 +7,7 @@ import { getBookingButtonLabel, getBookingTone } from '@/lib/booking'
 
 type MapboxMap = import('mapbox-gl').Map
 type MapboxMarker = import('mapbox-gl').Marker
+type MapboxPopup = import('mapbox-gl').Popup
 
 interface Props {
   courses: Course[]
@@ -20,13 +21,19 @@ export function Map({ courses, teeTimes, selectedCourseId, onCourseSelect, userL
   const mapRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<MapboxMap | null>(null)
   const markersRef = useRef<Record<string, MapboxMarker>>({})
+  const popupsRef = useRef<Record<string, MapboxPopup>>({})
   const userMarkerRef = useRef<MapboxMarker | null>(null)
+  const selectedCourseIdRef = useRef<string | null>(selectedCourseId)
   const [mapboxLoaded, setMapboxLoaded] = useState(false)
 
   const timesByCourse = useMemo(() => teeTimes.reduce<Record<string, TeeTime[]>>((acc, tt) => {
     acc[tt.course_id] = [...(acc[tt.course_id] || []), tt]
     return acc
   }, {}), [teeTimes])
+
+  useEffect(() => {
+    selectedCourseIdRef.current = selectedCourseId
+  }, [selectedCourseId])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -61,6 +68,8 @@ export function Map({ courses, teeTimes, selectedCourseId, onCourseSelect, userL
 
       Object.values(markersRef.current).forEach((m) => m.remove())
       markersRef.current = {}
+      Object.values(popupsRef.current).forEach((p) => p.remove())
+      popupsRef.current = {}
       userMarkerRef.current?.remove()
       userMarkerRef.current = null
 
@@ -125,18 +134,19 @@ export function Map({ courses, teeTimes, selectedCourseId, onCourseSelect, userL
           maxWidth: '300px',
         }).setHTML(popupHtml)
 
-        // Create marker first so click handler can reference it directly
+        // Popup open state is controlled by React selection so repeated marker clicks can close it.
         const marker = new mapboxGl.Marker({ element: el })
           .setLngLat([course.lng, course.lat])
-          .setPopup(popup)
           .addTo(map)
 
         markersRef.current[course.id] = marker
-        if (isSelected) marker.togglePopup()
+        popupsRef.current[course.id] = popup
+        if (isSelected) popup.setLngLat([course.lng, course.lat]).addTo(map)
 
         el.addEventListener('click', (e) => {
+          e.preventDefault()
           e.stopPropagation()
-          onCourseSelect(isSelected ? null : course.id)
+          onCourseSelect(selectedCourseIdRef.current === course.id ? null : course.id)
         })
       })
 

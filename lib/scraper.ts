@@ -9,7 +9,7 @@ interface VerifiedTeeTime {
   cartIncluded: boolean
   walkingAllowed: boolean
   bookingUrl?: string | null
-  source: 'golfnow' | 'foreup'
+  source: 'golfnow' | 'foreup' | 'webtrac'
 }
 
 type BookingIntegration =
@@ -21,11 +21,12 @@ type BookingIntegration =
   | { provider: 'teequest'; url: string }
   | { provider: 'clubcaddie'; url: string }
   | { provider: 'northstar'; url: string }
+  | { provider: 'webtrac'; url: string }
   | { provider: 'official'; url: string }
   | { provider: 'phone'; url: string }
 
 const BOOKING_INTEGRATIONS: Record<string, BookingIntegration> = {
-  'fresh-pond': { provider: 'official', url: 'https://secure.cambridgema.gov/webtrac/web/search.html?module=GR' },
+  'fresh-pond': { provider: 'webtrac', url: 'https://secure.cambridgema.gov/webtrac/web/search.html?display=Detail&module=GR' },
   'william-devine': { provider: 'cps', url: 'https://williamjdevine.cps.golf' },
   'george-wright': { provider: 'cps', url: 'https://georgewright.cps.golf' },
   'ponkapoag-1': { provider: 'official', url: 'https://www.mass.gov/locations/ponkapoag-golf-course' },
@@ -55,6 +56,7 @@ const DEFAULT_SUPPORTED_COURSE_SLUGS = [
   'widows-walk',
   'braintree-municipal',
   'presidents',
+  'fresh-pond',
 ]
 const SUPPORTED_COURSE_SLUGS = new Set(
   (process.env.SUPPORTED_COURSE_SLUGS || DEFAULT_SUPPORTED_COURSE_SLUGS.join(','))
@@ -428,6 +430,123 @@ function extractForeUpJson<T>(html: string, variableName: string): T | null {
   }
 }
 
+async function fetchWebTracTeeTimes(
+  integration: Extract<BookingIntegration, { provider: 'webtrac' }>,
+  date: string
+): Promise<VerifiedTeeTime[]> {
+  const BASE_URL = 'https://secure.cambridgema.gov/webtrac/web/search.html'
+  const FRESH_POND_PRICE = 22
+
+  try {
+    // Step 1: GET to acquire CSRF token and session cookies
+    const initResp = await fetch(`${BASE_URL}?display=Detail&module=GR`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+      signal: AbortSignal.timeout(15000),
+    })
+    if (!initResp.ok) return []
+
+    const rawCookies = typeof (initResp.headers as unknown as { getSetCookie?(): string[] }).getSetCookie === 'function'
+      ? (initResp.headers as unknown as { getSetCookie(): string[] }).getSetCookie()
+      : [initResp.headers.get('set-cookie') || ''].filter(Boolean)
+    const cookieStr = rawCookies.map((c: string) => c.split(';')[0]).filter(Boolean).join('; ')
+
+    const initHtml = await initResp.text()
+    const csrfMatch = initHtml.match(/__application_csrf_token__\s*=\s*"([^"]+)"/)
+    if (!csrfMatch) return []
+    const csrfToken = csrfMatch[1]
+
+    // Step 2: POST search form with the requested date (MM/DD/YYYY)
+    const [year, month, day] = date.split('-')
+    const searchDate = `${month}/${day}/${year}`
+
+    const searchResp = await fetch(BASE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': `${BASE_URL}?display=Detail&module=GR`,
+        ...(cookieStr ? { 'Cookie': cookieStr } : {}),
+      },
+      body: new URLSearchParams({
+        module: 'GR',
+        display: 'Detail',
+        search: 'yes',
+        begindate: searchDate,
+        _csrf_token: csrfToken,
+      }).toString(),
+      signal: AbortSignal.timeout(15000),
+    })
+    if (!searchResp.ok) return []
+    const html = await searchResp.text()
+
+    // Step 3: Parse the results table
+    const tableMatch = html.match(/<tbody>([\s\S]*?)<\/tbody>/)
+    if (!tableMatch) return []
+
+    const results: VerifiedTeeTime[] = []
+    const seen = new Set<string>()
+
+    for (const rowMatch of tableMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)) {
+      const cells: Record<string, string> = {}
+      for (const cellMatch of rowMatch[1].matchAll(/data-title="([^"]+)"[^>]*>([\s\S]*?)<\/td>/g)) {
+        cells[cellMatch[1]] = cellMatch[2].replace(/<[^>]+>/g, '').trim()
+      }
+
+      const { Time: rawTime, Date: rawDate, Holes: rawHoles, Status: rawStatus } = cells
+      if (!rawTime || !rawDate || !rawHoles || !rawStatus) continue
+
+      // Only keep rows matching the requested date
+      const dmatch = rawDate.match(/^(\d+)\/(\d+)\/(\d+)$/)
+      if (!dmatch) continue
+      const rowDate = `${dmatch[3]}-${dmatch[1].padStart(2, '0')}-${dmatch[2].padStart(2, '0')}`
+      if (rowDate !== date) continue
+
+      // Parse time → HH:MM (24-hour)
+      const tmatch = rawTime.trim().match(/^(\d+):(\d+)\s*(am|pm)$/i)
+      if (!tmatch) continue
+      let hour = parseInt(tmatch[1])
+      if (/pm/i.test(tmatch[3]) && hour < 12) hour += 12
+      if (/am/i.test(tmatch[3]) && hour === 12) hour = 0
+      const timeStr = `${String(hour).padStart(2, '0')}:${tmatch[2]}`
+
+      // Parse hole count
+      const hmatch = rawHoles.match(/^(\d+)/)
+      if (!hmatch) continue
+      const holes = parseInt(hmatch[1])
+
+      // Status is a concatenation of 4 slot statuses with no separator
+      const available = (rawStatus.match(/Available/g) || []).length
+      if (available === 0) continue
+
+      const key = `${timeStr}:${holes}`
+      if (seen.has(key)) continue
+      seen.add(key)
+
+      results.push({
+        time: timeStr,
+        players: available,
+        holes,
+        price: FRESH_POND_PRICE,
+        cartIncluded: false,
+        walkingAllowed: true,
+        bookingUrl: integration.url,
+        source: 'webtrac',
+      })
+    }
+
+    return results
+  } catch (err) {
+    console.error('WebTrac scrape error:', err)
+    return []
+  }
+}
+
 async function fetchProviderTeeTimes(course: Course, date: string): Promise<VerifiedTeeTime[]> {
   const integration = BOOKING_INTEGRATIONS[course.slug]
   const golfNow = VERIFIED_GOLFNOW_FACILITIES[course.slug]
@@ -437,6 +556,9 @@ async function fetchProviderTeeTimes(course: Course, date: string): Promise<Veri
       : Promise.resolve([]),
     integration?.provider === 'foreup'
       ? fetchForeUpTeeTimes(integration, date)
+      : Promise.resolve([]),
+    integration?.provider === 'webtrac'
+      ? fetchWebTracTeeTimes(integration, date)
       : Promise.resolve([]),
   ])
 
