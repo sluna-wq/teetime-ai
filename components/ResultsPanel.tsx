@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type ComponentType } from 'react'
 import type { Course, TeeTime } from '@/types'
-import { formatTime, formatDate } from '@/lib/utils'
+import { formatTime, formatDate, timeAgo } from '@/lib/utils'
 import { type Filter, FILTER_LABELS } from '@/lib/filters'
 import { getBookingBadgeLabel, getBookingButtonLabel, getBookingTone } from '@/lib/booking'
 
@@ -249,6 +249,9 @@ function ResultRow({ teeTime, rank, isSelected, isRecommended, onSelect }: {
             bookingTone === 'strong' ? 'bg-green-50 text-green-700' : bookingTone === 'manual' ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-600'
           }`}>
             {bookingBadge}
+          </span>
+          <span className="text-[11px] rounded-full bg-blue-50 px-2 py-0.5 text-blue-700">
+            Verified {timeAgo(teeTime.scraped_at)}
           </span>
         </div>
       </div>

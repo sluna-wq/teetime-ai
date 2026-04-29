@@ -53,6 +53,7 @@ create index if not exists tee_times_date_idx on tee_times(tee_date);
 create index if not exists tee_times_course_idx on tee_times(course_id);
 create index if not exists tee_times_price_idx on tee_times(price_per_player);
 create index if not exists tee_times_scraped_idx on tee_times(scraped_at);
+create index if not exists tee_times_source_idx on tee_times(source);
 
 -- Alerts
 create table if not exists alerts (

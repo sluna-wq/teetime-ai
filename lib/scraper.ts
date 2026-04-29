@@ -1,18 +1,15 @@
 import { supabaseAdmin } from './supabase'
 import type { Course } from '@/types'
 
-interface GolfNowTeeTime {
-  time: string // "08:00"
+interface VerifiedTeeTime {
+  time: string
   players: number
   holes: number
-  rate: {
-    greenFee: number
-    cartFee: number
-    totalFee: number
-  }
-  cartRequired: boolean
-  holes18: boolean
-  bookingUrl: string
+  price: number
+  cartIncluded: boolean
+  walkingAllowed: boolean
+  bookingUrl?: string | null
+  source: 'golfnow' | 'foreup'
 }
 
 type BookingIntegration =
@@ -47,6 +44,15 @@ const BOOKING_INTEGRATIONS: Record<string, BookingIntegration> = {
   'new-england-cc': { provider: 'teesnap', url: 'https://newenglandcc.teesnap.net/' },
   'foxborough-cc': { provider: 'phone', url: 'https://www.foxboroughcc.com/about/public-play' },
 }
+
+const FRESH_TEE_TIME_WINDOW_MINUTES = Number(process.env.TEE_TIME_FRESH_MINUTES || 20)
+const SCRAPE_DAYS_AHEAD = Number(process.env.SCRAPE_DAYS_AHEAD || 15)
+const SUPPORTED_COURSE_SLUGS = new Set(
+  (process.env.SUPPORTED_COURSE_SLUGS || '')
+    .split(',')
+    .map((slug) => slug.trim())
+    .filter(Boolean)
+)
 
 function getCourseFallbackUrl(course: Pick<Course, 'name' | 'website'>): string {
   return course.website ||
@@ -107,12 +113,31 @@ function getCourseBookingUrl(
   return getGolfNowSearchUrl(course, date) || getCourseFallbackUrl(course)
 }
 
+function toIsoDate(date: Date) {
+  return date.toISOString().split('T')[0]
+}
+
+function toForeUpDate(date: string) {
+  const [year, month, day] = date.split('-')
+  return `${month}-${day}-${year}`
+}
+
+function toHHMM(value: string) {
+  const timePart = value.includes(' ') ? value.split(' ')[1] : value
+  return timePart.slice(0, 5)
+}
+
+function numberValue(value: unknown, fallback = 0) {
+  const n = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(n) ? n : fallback
+}
+
 // Fetch tee times for a single course on a single date via GolfNow API
 async function fetchGolfNowTeeTimes(
   facilityId: string,
   golfnowSlug: string,
   date: string // YYYY-MM-DD
-): Promise<GolfNowTeeTime[]> {
+): Promise<VerifiedTeeTime[]> {
   const [year, month, day] = date.split('-')
   const formattedDate = `${month}/${day}/${year}`
 
@@ -146,9 +171,9 @@ function parseGolfNowApiResponse(
   data: unknown,
   facilityId: string,
   golfnowSlug: string
-): GolfNowTeeTime[] {
+): VerifiedTeeTime[] {
   // Handle various GolfNow API response shapes
-  const teeTimes: GolfNowTeeTime[] = []
+  const teeTimes: VerifiedTeeTime[] = []
 
   if (!data || typeof data !== 'object') return teeTimes
 
@@ -181,11 +206,12 @@ function parseGolfNowApiResponse(
         time,
         players,
         holes,
-        rate: { greenFee, cartFee, totalFee },
-        cartRequired,
-        holes18: holes === 18,
+        price: totalFee,
+        cartIncluded: cartRequired,
+        walkingAllowed: !cartRequired,
         bookingUrl: bookingUrl ||
           `https://www.golfnow.com/tee-times/facility/${facilityId}-${golfnowSlug}/search`,
+        source: 'golfnow',
       })
     }
   }
@@ -198,7 +224,7 @@ async function scrapeGolfNowPage(
   facilityId: string,
   golfnowSlug: string,
   date: string
-): Promise<GolfNowTeeTime[]> {
+): Promise<VerifiedTeeTime[]> {
   const [year, month, day] = date.split('-')
   const formattedDate = `${month}%2F${day}%2F${year}`
 
@@ -215,6 +241,7 @@ async function scrapeGolfNowPage(
     })
 
     if (!response.ok) return []
+    if (response.url && !response.url.includes(`/facility/${facilityId}-`)) return []
 
     const html = await response.text()
 
@@ -248,8 +275,141 @@ async function scrapeGolfNowPage(
   }
 }
 
+async function fetchForeUpTeeTimes(
+  integration: Extract<BookingIntegration, { provider: 'foreup' }>,
+  date: string
+): Promise<VerifiedTeeTime[]> {
+  const page = await fetch(integration.url, {
+    headers: {
+      'Accept': 'text/html,application/xhtml+xml',
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+      'Accept-Language': 'en-US,en;q=0.9',
+    },
+    signal: AbortSignal.timeout(15000),
+  })
+
+  if (!page.ok) return []
+  const html = await page.text()
+  const defaultFilter = extractForeUpJson<Record<string, unknown>>(html, 'DEFAULT_FILTER')
+  const schedules = extractForeUpJson<Array<Record<string, unknown>>>(html, 'SCHEDULES') || []
+  const schedule = schedules.find((s) => s.selected === true) || schedules[0]
+  if (!schedule || !defaultFilter) return []
+
+  const bookingClasses = Array.isArray(schedule.booking_classes)
+    ? schedule.booking_classes as Array<Record<string, unknown>>
+    : []
+  const publicClass = bookingClasses.find((bookingClass) => (
+    bookingClass.hidden !== '1' &&
+    bookingClass.block_online_booking !== '1' &&
+    bookingClass.online_booking_protected !== '1' &&
+    /public|guest|standard/i.test(String(bookingClass.name || ''))
+  )) || bookingClasses.find((bookingClass) => (
+    bookingClass.hidden !== '1' &&
+    bookingClass.block_online_booking !== '1' &&
+    bookingClass.online_booking_protected !== '1'
+  ))
+
+  if (!publicClass) return []
+
+  const scheduleId = String(schedule.teesheet_id || defaultFilter.schedule_id || '')
+  const bookingClassId = String(publicClass.booking_class_id || '')
+  const courseId = String(schedule.course_id || defaultFilter.course_id || '')
+  if (!scheduleId || !bookingClassId || !courseId) return []
+
+  const holeOptions = String(publicClass.limit_holes || defaultFilter.holes || '18') === '0'
+    ? [18, 9]
+    : [numberValue(publicClass.limit_holes || defaultFilter.holes, 18), 9]
+  const slots = []
+
+  for (const holes of [...new Set(holeOptions)]) {
+    const query = new URLSearchParams({
+      time: 'all',
+      date: toForeUpDate(date),
+      holes: String(holes),
+      players: '1',
+      booking_class: bookingClassId,
+      schedule_id: scheduleId,
+      api_key: '',
+    })
+    query.append('schedule_ids[]', scheduleId)
+
+    const apiUrl = `https://foreupsoftware.com/index.php/api/booking/times?${query.toString()}`
+    const response = await fetch(apiUrl, {
+      headers: {
+        'Accept': 'application/json, text/javascript, */*; q=0.01',
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+        'Referer': integration.url,
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+      signal: AbortSignal.timeout(15000),
+    })
+
+    if (!response.ok) continue
+    const data = await response.json()
+    if (Array.isArray(data)) slots.push(...data)
+  }
+
+  const seen = new Set<string>()
+  return slots
+    .filter((slot) => slot && typeof slot === 'object')
+    .map((slot) => {
+      const s = slot as Record<string, unknown>
+      const holes = numberValue(s.holes, numberValue(defaultFilter.holes, 18))
+      const greenFee = holes === 9
+        ? numberValue(s.green_fee_9, numberValue(s.green_fee, 0))
+        : numberValue(s.green_fee_18, numberValue(s.green_fee, 0))
+      const cartFee = holes === 9
+        ? numberValue(s.cart_fee_9, numberValue(s.cart_fee, 0))
+        : numberValue(s.cart_fee_18, numberValue(s.cart_fee, 0))
+      const bookingCarts = publicClass.booking_carts === '1' || s.rate_type === 'riding'
+      return {
+        time: toHHMM(String(s.time || '')),
+        players: numberValue(s.available_spots, 1),
+        holes,
+        price: greenFee + (bookingCarts ? cartFee : 0),
+        cartIncluded: bookingCarts,
+        walkingAllowed: !bookingCarts,
+        bookingUrl: integration.url,
+        source: 'foreup' as const,
+      }
+    })
+    .filter((slot) => {
+      const key = `${slot.time}:${slot.holes}`
+      if (!slot.time || slot.price <= 0 || slot.players <= 0 || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+}
+
+function extractForeUpJson<T>(html: string, variableName: string): T | null {
+  const marker = `${variableName} = `
+  const start = html.indexOf(marker)
+  if (start === -1) return null
+  const valueStart = start + marker.length
+  const end = html.indexOf(';\n', valueStart)
+  if (end === -1) return null
+  try {
+    return JSON.parse(html.slice(valueStart, end)) as T
+  } catch {
+    return null
+  }
+}
+
+async function fetchProviderTeeTimes(course: Course, date: string): Promise<VerifiedTeeTime[]> {
+  const integration = BOOKING_INTEGRATIONS[course.slug]
+  if (integration?.provider === 'foreup') {
+    return fetchForeUpTeeTimes(integration, date)
+  }
+
+  if (course.golfnow_facility_id && course.golfnow_slug) {
+    return fetchGolfNowTeeTimes(course.golfnow_facility_id, course.golfnow_slug, date)
+  }
+
+  return []
+}
+
 // Main scrape function — runs for all courses, next N days
-export async function scrapeAllCourses(daysAhead = 7) {
+export async function scrapeAllCourses(daysAhead = SCRAPE_DAYS_AHEAD) {
   const logEntry = await supabaseAdmin
     .from('scrape_logs')
     .insert({ started_at: new Date().toISOString() })
@@ -274,18 +434,13 @@ export async function scrapeAllCourses(daysAhead = 7) {
   const dates = getDatesToScrape(daysAhead)
 
   for (const course of courses as Course[]) {
-    if (!course.golfnow_facility_id || !course.golfnow_slug) continue
+    if (SUPPORTED_COURSE_SLUGS.size > 0 && !SUPPORTED_COURSE_SLUGS.has(course.slug)) continue
 
     for (const date of dates) {
       try {
-        const teeTimes = await fetchGolfNowTeeTimes(
-          course.golfnow_facility_id,
-          course.golfnow_slug,
-          date
-        )
+        const teeTimes = await fetchProviderTeeTimes(course, date)
 
-        // No verified tee times means no rows. Do not manufacture availability:
-        // Reserve links must only appear for tee times that came from a live source.
+        await deleteCourseDateRows(course.id, date)
         if (teeTimes.length === 0) {
           continue
         }
@@ -296,25 +451,22 @@ export async function scrapeAllCourses(daysAhead = 7) {
           tee_time: tt.time,
           holes: tt.holes,
           available_spots: tt.players,
-          price_per_player: tt.rate.totalFee,
-          cart_included: tt.cartRequired,
-          walking_allowed: !tt.cartRequired,
+          price_per_player: tt.price,
+          cart_included: tt.cartIncluded,
+          walking_allowed: tt.walkingAllowed,
           booking_url: getCourseBookingUrl(course, date, tt.bookingUrl),
-          source: 'golfnow',
+          source: tt.source,
+          scraped_at: new Date().toISOString(),
         }))
 
         totalFound += rows.length
 
-        // Upsert — update if slot already exists
-        const { error: upsertError } = await supabaseAdmin
+        const { error: insertError } = await supabaseAdmin
           .from('tee_times')
-          .upsert(rows, {
-            onConflict: 'course_id,tee_date,tee_time,holes',
-            ignoreDuplicates: false,
-          })
+          .insert(rows)
 
-        if (upsertError) {
-          errors.push({ course: course.name, error: upsertError.message })
+        if (insertError) {
+          errors.push({ course: course.name, error: insertError.message })
         } else {
           totalInserted += rows.length
         }
@@ -334,6 +486,11 @@ export async function scrapeAllCourses(daysAhead = 7) {
     .delete()
     .lt('tee_date', new Date().toISOString().split('T')[0])
 
+  await supabaseAdmin
+    .from('tee_times')
+    .delete()
+    .lt('scraped_at', new Date(Date.now() - FRESH_TEE_TIME_WINDOW_MINUTES * 60 * 1000).toISOString())
+
   // Update log
   if (logId) {
     await supabaseAdmin
@@ -351,13 +508,22 @@ export async function scrapeAllCourses(daysAhead = 7) {
   return { found: totalFound, inserted: totalInserted, errors }
 }
 
+async function deleteCourseDateRows(courseId: string, date: string) {
+  await supabaseAdmin
+    .from('tee_times')
+    .delete()
+    .eq('course_id', courseId)
+    .eq('tee_date', date)
+    .neq('source', 'demo')
+}
+
 function getDatesToScrape(daysAhead: number): string[] {
   const dates = []
   const today = new Date()
   for (let i = 0; i <= daysAhead; i++) {
     const d = new Date(today)
     d.setDate(d.getDate() + i)
-    dates.push(d.toISOString().split('T')[0])
+    dates.push(toIsoDate(d))
   }
   return dates
 }
@@ -412,6 +578,7 @@ async function fetchTeeTimesFromDb(
       course:courses(*)
     `)
     .gte('tee_date', params.date || params.date_start || new Date().toISOString().split('T')[0])
+    .gte('scraped_at', new Date(Date.now() - FRESH_TEE_TIME_WINDOW_MINUTES * 60 * 1000).toISOString())
     .order('tee_date', { ascending: true })
     .order('tee_time', { ascending: true })
     .limit(200)

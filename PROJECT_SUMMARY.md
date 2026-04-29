@@ -63,7 +63,7 @@ Users can say "let me know if anything opens up at Granite Links this weekend." 
 
 **Results separate from chat.** Early versions embedded tee time cards inside chat bubbles. This was confusing — the conversation felt cluttered, and users couldn't compare options at a glance. The final design puts results in a dedicated panel that updates when Claude searches. Chat remains a clean conversational thread.
 
-**Verified availability only.** GolfNow and course booking engines block automated requests intermittently. The app tries the GolfNow JSON API first, then falls back to HTML parsing. If no verified rows are found, the product shows no availability instead of filling the gap with deterministic demo slots. Reliability here means the system is allowed to say "I don't know."
+**Verified availability only.** GolfNow and course booking engines block automated requests intermittently. The app tries provider-specific adapters first where available, including foreUP's public booking JSON endpoint, and rejects GolfNow facility redirects that do not match the expected course. If no verified rows are found, the product shows no availability instead of filling the gap with deterministic demo slots. Reliability here means the system is allowed to say "I don't know."
 
 **Haversine distance filtering.** Rather than filtering by city or zip code, the backend calculates actual GPS distance from the user's location. The user's GPS coordinates are injected into every message sent to Claude, enabling radius-based queries without the user typing an address.
 

@@ -236,6 +236,22 @@ async function handleToolCall(
   return { error: 'Unknown tool' }
 }
 
+function buildNoVerifiedTeeTimesText(toolInput: Record<string, unknown>) {
+  const parts = []
+  if (typeof toolInput.date === 'string') parts.push(toolInput.date)
+  if (typeof toolInput.date_start === 'string' && typeof toolInput.date_end === 'string') {
+    parts.push(`${toolInput.date_start} to ${toolInput.date_end}`)
+  }
+  if (typeof toolInput.time_start === 'string' || typeof toolInput.time_end === 'string') {
+    parts.push(`${toolInput.time_start || 'any time'}-${toolInput.time_end || 'any time'}`)
+  }
+  if (typeof toolInput.holes === 'number') parts.push(`${toolInput.holes} holes`)
+  if (typeof toolInput.players === 'number') parts.push(`${toolInput.players} player${toolInput.players === 1 ? '' : 's'}`)
+
+  const criteria = parts.length > 0 ? ` for ${parts.join(', ')}` : ''
+  return `I found no verified tee times${criteria}. I do not want to make up slots here. Try widening the time window, checking 9 holes as well, increasing the radius, or removing the price/player constraint.`
+}
+
 export async function POST(req: NextRequest) {
   const { messages } = await req.json()
   const encoder = new TextEncoder()
@@ -270,6 +286,7 @@ export async function POST(req: NextRequest) {
           if (response.stop_reason === 'tool_use') {
             const toolUseBlocks = response.content.filter((b) => b.type === 'tool_use')
             const toolResults: Anthropic.ToolResultBlockParam[] = []
+            let stopAfterDeterministicText = false
 
             for (const block of toolUseBlocks) {
               if (block.type !== 'tool_use') continue
@@ -281,6 +298,11 @@ export async function POST(req: NextRequest) {
               )
 
               const result = await handleToolCall(block.name, block.input as Record<string, unknown>)
+              const isEmptyVerifiedSearch = block.name === 'search_tee_times' &&
+                typeof result === 'object' &&
+                result !== null &&
+                'count' in result &&
+                result.count === 0
 
               controller.enqueue(
                 encoder.encode(
@@ -288,11 +310,24 @@ export async function POST(req: NextRequest) {
                 )
               )
 
+              if (isEmptyVerifiedSearch) {
+                const text = buildNoVerifiedTeeTimesText(block.input as Record<string, unknown>)
+                controller.enqueue(
+                  encoder.encode(`data: ${JSON.stringify({ type: 'text', text })}\n\n`)
+                )
+                stopAfterDeterministicText = true
+              }
+
               toolResults.push({
                 type: 'tool_result',
                 tool_use_id: block.id,
                 content: JSON.stringify(result),
               })
+            }
+
+            if (stopAfterDeterministicText) {
+              continueLoop = false
+              continue
             }
 
             // Always update messages and continue — let Claude terminate naturally

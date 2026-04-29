@@ -50,6 +50,19 @@ npm run eval:booking
 - `app/api/chat/route.ts` - Claude tool-use loop.
 - `app/api/cron/scrape/route.ts` - scraper endpoint.
 - `app/api/cron/check-alerts/route.ts` - alert email endpoint.
+- `app/api/pilot/status/route.ts` - unattended-pilot health and fresh inventory coverage.
 - `lib/scraper.ts` - tee-time scrape and query logic.
 - `lib/courses.ts` - static Boston course catalog.
 - `supabase/schema.sql` - database schema.
+
+## 15-Day Pilot Reliability
+
+The pilot should run from verified rows only:
+
+- `SCRAPE_DAYS_AHEAD=60` keeps the next 60 days warm if the pilot window may slip.
+- `TEE_TIME_FRESH_MINUTES=20` hides rows older than the freshness window.
+- `SUPPORTED_COURSE_SLUGS=putterham-meadows,furnace-brook,widows-walk` limits scraping to courses with provider adapters that are expected to hold up.
+- `/api/cron/scrape?days=15` replaces each course/date with newly verified provider rows.
+- `/api/pilot/status` reports fresh tee-time coverage by course and source.
+
+Run the scrape every 5-10 minutes during the pilot for supported courses. If `/api/pilot/status` has `ok: false` or too few covered courses, the product should be treated as degraded rather than allowed to invent availability.

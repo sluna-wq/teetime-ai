@@ -11,7 +11,8 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const result = await scrapeAllCourses(7)
+    const daysAhead = Number(req.nextUrl.searchParams.get('days') || process.env.SCRAPE_DAYS_AHEAD || 15)
+    const result = await scrapeAllCourses(daysAhead)
     return NextResponse.json({ success: true, ...result })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
