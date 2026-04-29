@@ -13,6 +13,8 @@
         "players": 4,
         "holes": 18
       },
+      "provider": "webtrac",
+      "capability": "deep_link_to_date",
       "agentGoal": "Navigate like a user from the course site to the tee-time booking surface, set or confirm the requested date if the site allows it, and stop before login, payment, or final reservation.",
       "successSignals": {
         "courseNameAnyOf": ["Fresh Pond", "Fresh Pond Golf Course"],
@@ -33,6 +35,8 @@
         "players": 4,
         "holes": 18
       },
+      "provider": "foreup",
+      "capability": "blocked_in_headless",
       "agentGoal": "Navigate like a user from Brookline Golf Course to online tee times for Putterham/Robert T. Lynch, set or confirm the requested date if possible, and stop before login, payment, or final reservation.",
       "successSignals": {
         "courseNameAnyOf": ["Brookline Golf Course", "Robert T. Lynch", "Putterham"],
@@ -45,13 +49,15 @@
     {
       "id": "granite_links_booking_flow",
       "course": "Granite Links",
-      "entryUrl": "https://www.granitelinks.com/golf/tee-times",
+      "entryUrl": "https://www.granitelinks.com/reserve-a-tee-time",
       "target": {
         "date": "tomorrow",
         "time": "09:20",
         "players": 4,
         "holes": 18
       },
+      "provider": "northstar",
+      "capability": "blocked_in_headless",
       "agentGoal": "Navigate like a user to Granite Links tee-time booking, set or confirm the requested date if possible, and stop before login, payment, or final reservation.",
       "successSignals": {
         "courseNameAnyOf": ["Granite Links"],
@@ -72,6 +78,8 @@
         "players": 4,
         "holes": 18
       },
+      "provider": "cps",
+      "capability": "blocked_in_headless",
       "agentGoal": "Navigate like a user from the Franklin Park page to the William J. Devine tee-time booking surface, set or confirm the requested date if possible, and stop before login, payment, or final reservation.",
       "successSignals": {
         "courseNameAnyOf": ["William J. Devine", "Franklin Park", "City of Boston Golf"],

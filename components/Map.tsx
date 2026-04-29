@@ -1,13 +1,12 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Course, TeeTime } from '@/types'
-import { formatTime, formatDate } from '@/lib/utils'
+import { formatTime } from '@/lib/utils'
+import { getBookingButtonLabel, getBookingTone } from '@/lib/booking'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type MapboxMap = any
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type MapboxMarker = any
+type MapboxMap = import('mapbox-gl').Map
+type MapboxMarker = import('mapbox-gl').Marker
 
 interface Props {
   courses: Course[]
@@ -21,19 +20,13 @@ export function Map({ courses, teeTimes, selectedCourseId, onCourseSelect, userL
   const mapRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<MapboxMap | null>(null)
   const markersRef = useRef<Record<string, MapboxMarker>>({})
+  const userMarkerRef = useRef<MapboxMarker | null>(null)
   const [mapboxLoaded, setMapboxLoaded] = useState(false)
 
-  const courseTimeCounts = teeTimes.reduce<Record<string, number>>((acc, tt) => {
-    acc[tt.course_id] = (acc[tt.course_id] || 0) + 1
+  const timesByCourse = useMemo(() => teeTimes.reduce<Record<string, TeeTime[]>>((acc, tt) => {
+    acc[tt.course_id] = [...(acc[tt.course_id] || []), tt]
     return acc
-  }, {})
-
-  // Group tee times by course
-  const timesByCourse = teeTimes.reduce<Record<string, TeeTime[]>>((acc, tt) => {
-    if (!acc[tt.course_id]) acc[tt.course_id] = []
-    acc[tt.course_id].push(tt)
-    return acc
-  }, {})
+  }, {}), [teeTimes])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -68,12 +61,14 @@ export function Map({ courses, teeTimes, selectedCourseId, onCourseSelect, userL
 
       Object.values(markersRef.current).forEach((m) => m.remove())
       markersRef.current = {}
+      userMarkerRef.current?.remove()
+      userMarkerRef.current = null
 
       courses.forEach((course) => {
-        const count = courseTimeCounts[course.id] || 0
+        const courseTimes = timesByCourse[course.id] || []
+        const count = courseTimes.length
         const isSelected = selectedCourseId === course.id
         const hasSlots = count > 0
-        const courseTimes = (timesByCourse[course.id] || []).slice(0, 4)
 
         const el = document.createElement('div')
         el.style.cssText = `
@@ -98,17 +93,17 @@ export function Map({ courses, teeTimes, selectedCourseId, onCourseSelect, userL
 
         // Build popup HTML with tee times
         const timesHtml = courseTimes.length > 0
-          ? courseTimes.map((tt) => `
+          ? courseTimes.slice(0, 4).map((tt) => `
               <a href="${tt.booking_url}" target="_blank" rel="noopener noreferrer"
                 style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f3f4f6;text-decoration:none;color:inherit;gap:12px">
                 <span style="font-size:13px;font-weight:600;color:#111">${formatTime(tt.tee_time)}</span>
                 <span style="font-size:12px;color:#6b7280">${tt.holes}h · ${tt.walking_allowed ? 'Walk' : 'Cart'}</span>
                 <span style="font-size:13px;font-weight:700;color:#16a34a">$${tt.price_per_player}</span>
-                <span style="font-size:11px;background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:999px;font-weight:600">Book →</span>
+                <span style="font-size:11px;background:${getBookingTone(tt) === 'strong' ? '#dcfce7' : '#f3f4f6'};color:${getBookingTone(tt) === 'strong' ? '#15803d' : '#374151'};padding:2px 8px;border-radius:999px;font-weight:600">${getBookingButtonLabel(tt)} →</span>
               </a>`).join('')
           : '<p style="color:#9ca3af;font-size:13px;margin:8px 0">No slots in current search</p>'
 
-        const moreCount = (timesByCourse[course.id] || []).length - 4
+        const moreCount = courseTimes.length - 4
         const moreHtml = moreCount > 0
           ? `<p style="font-size:12px;color:#9ca3af;margin:6px 0 0;text-align:center">+${moreCount} more — ask the AI to filter</p>`
           : ''
@@ -149,12 +144,12 @@ export function Map({ courses, teeTimes, selectedCourseId, onCourseSelect, userL
       if (userLocation) {
         const el = document.createElement('div')
         el.style.cssText = `width:14px;height:14px;background:#3b82f6;border-radius:50%;border:3px solid white;box-shadow:0 0 0 3px rgba(59,130,246,0.25);`
-        new mapboxGl.Marker({ element: el })
+        userMarkerRef.current = new mapboxGl.Marker({ element: el })
           .setLngLat([userLocation.lng, userLocation.lat])
           .addTo(map)
       }
     })
-  }, [mapboxLoaded, courses, teeTimes, selectedCourseId, userLocation, courseTimeCounts, timesByCourse, onCourseSelect])
+  }, [mapboxLoaded, courses, selectedCourseId, userLocation, timesByCourse, onCourseSelect])
 
   // Fly to selected course
   useEffect(() => {

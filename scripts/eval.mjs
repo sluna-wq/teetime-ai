@@ -21,6 +21,8 @@ const fixtureCourses = [
     lat: 42.3823,
     lng: -71.1458,
     website: 'https://www.freshpondgolf.com',
+    booking_provider: 'webtrac',
+    booking_capability: 'deep_link_to_date',
     walking_allowed: true
   },
   {
@@ -30,6 +32,8 @@ const fixtureCourses = [
     lat: 42.2378,
     lng: -71.1264,
     website: 'https://www.cityofbostongolf.com/george-wright',
+    booking_provider: 'cps',
+    booking_capability: 'blocked_in_headless',
     walking_allowed: true
   },
   {
@@ -39,6 +43,8 @@ const fixtureCourses = [
     lat: 42.3057,
     lng: -71.0923,
     website: 'https://www.cityofbostongolf.com/franklin-park',
+    booking_provider: 'cps',
+    booking_capability: 'blocked_in_headless',
     walking_allowed: true
   },
   {
@@ -48,6 +54,8 @@ const fixtureCourses = [
     lat: 42.3051,
     lng: -71.1559,
     website: 'https://www.brooklinegolf.com',
+    booking_provider: 'foreup',
+    booking_capability: 'blocked_in_headless',
     walking_allowed: true
   },
   {
@@ -57,6 +65,8 @@ const fixtureCourses = [
     lat: 42.2497,
     lng: -71.0504,
     website: 'https://www.granitelinks.com/golf/tee-times',
+    booking_provider: 'northstar',
+    booking_capability: 'blocked_in_headless',
     walking_allowed: false
   },
   {
@@ -66,6 +76,8 @@ const fixtureCourses = [
     lat: 42.2636,
     lng: -71.0134,
     website: 'https://www.presidentsgc.com',
+    booking_provider: 'teeitup',
+    booking_capability: 'booking_engine_landing',
     walking_allowed: true
   },
   {
@@ -75,6 +87,8 @@ const fixtureCourses = [
     lat: 42.2084,
     lng: -70.7504,
     website: 'https://www.widowswalkgolf.com',
+    booking_provider: 'foreup',
+    booking_capability: 'booking_engine_landing',
     walking_allowed: true
   },
   {
@@ -84,6 +98,8 @@ const fixtureCourses = [
     lat: 42.4895,
     lng: -71.0957,
     website: 'https://www.stonehamoaks.com',
+    booking_provider: 'course_direct',
+    booking_capability: 'manual_date_selection',
     walking_allowed: true
   }
 ]
@@ -287,11 +303,25 @@ async function gradeTask(task, run, trial) {
   }
 
   gradeResultConstraints(checks, expected, run.searchResults)
+  gradeBookingMetadata(checks, run.searchResults)
   gradeChatGrounding(checks, task, expected, run)
   gradeBookingTargets(checks, run.searchResults)
 
   const pass = checks.every((c) => c.pass)
   return { id: task.id, suite: task.suite, trial, pass, checks, run }
+}
+
+function gradeBookingMetadata(checks, results) {
+  for (const result of results) {
+    check(checks, `result ${result.id} booking provider`, Boolean(result.course?.booking_provider), {
+      expected: 'booking_provider present',
+      actual: result.course?.booking_provider || 'missing'
+    })
+    check(checks, `result ${result.id} booking capability`, Boolean(result.course?.booking_capability), {
+      expected: 'booking_capability present',
+      actual: result.course?.booking_capability || 'missing'
+    })
+  }
 }
 
 function gradeSearchInput(checks, expected, input) {

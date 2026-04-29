@@ -40,6 +40,8 @@ function validateJourneySpec(journey) {
   check(checks, 'has target date', Boolean(resolveDateToken(journey.target?.date)), journey.target?.date)
   check(checks, 'has target time', /^\d{2}:\d{2}$/.test(journey.target?.time || ''), journey.target?.time)
   check(checks, 'has player count', Number.isInteger(journey.target?.players), journey.target?.players)
+  check(checks, 'has provider', Boolean(journey.provider), journey.provider)
+  check(checks, 'has capability', Boolean(journey.capability), journey.capability)
   check(checks, 'has course success signals', Array.isArray(journey.successSignals?.courseNameAnyOf) && journey.successSignals.courseNameAnyOf.length > 0, journey.successSignals?.courseNameAnyOf)
   check(checks, 'has booking success signals', Array.isArray(journey.successSignals?.bookingIntentAnyOf) && journey.successSignals.bookingIntentAnyOf.length > 0, journey.successSignals?.bookingIntentAnyOf)
   check(checks, 'has no-submit boundary', Array.isArray(journey.successSignals?.stopBeforeAnyOf) && journey.successSignals.stopBeforeAnyOf.length > 0, journey.successSignals?.stopBeforeAnyOf)
@@ -82,7 +84,7 @@ async function runBrowserJourney(journey) {
     }
     check(checks, 'did not reach prohibited final step', !includesAny(snapshot.haystack, journey.successSignals.stopBeforeAnyOf), snapshot.summary)
 
-    const dateEvidence = await trySetOrOpenDateContext(page, targetDate, trace)
+    const dateEvidence = await trySetOrOpenDateContext(page, targetDate, journey, trace)
     const afterDateSnapshot = await collectPageEvidence(page)
     check(
       checks,
@@ -93,7 +95,7 @@ async function runBrowserJourney(journey) {
     check(
       checks,
       'target date visible or date control reached',
-      dateEvidence.visible || includesAny(afterDateSnapshot.haystack, [targetDate, formatHumanDate(parseDate(targetDate))]),
+      dateEvidence.visible || hasDateContext(afterDateSnapshot, targetDate),
       afterDateSnapshot.summary
     )
   } catch (err) {
@@ -178,13 +180,16 @@ async function clickLikelyBookingEntry(page, trace) {
   trace.push({ action: 'booking entry not clicked', url: page.url() })
 }
 
-async function trySetOrOpenDateContext(page, targetDate, trace) {
-  const human = formatHumanDate(parseDate(targetDate))
-  const compactHuman = formatCompactHumanDate(parseDate(targetDate))
+async function trySetOrOpenDateContext(page, targetDate, journey, trace) {
   const current = await collectPageEvidence(page)
 
-  if (current.haystack.includes(targetDate) || current.haystack.toLowerCase().includes(human.toLowerCase()) || current.haystack.toLowerCase().includes(compactHuman.toLowerCase())) {
+  if (hasDateContext(current, targetDate)) {
     return { attempted: true, visible: true, reason: `target date already visible: ${targetDate}` }
+  }
+
+  if (journey.provider === 'foreup' || journey.provider === 'cps') {
+    const providerEvidence = await tryProviderCalendarDate(page, targetDate, journey.provider, trace)
+    if (providerEvidence.visible || providerEvidence.attempted) return providerEvidence
   }
 
   const labels = ['Date', 'Select Date', 'Choose Date', 'Tee Date']
@@ -219,6 +224,37 @@ async function trySetOrOpenDateContext(page, targetDate, trace) {
   return { attempted: false, visible: false, reason: 'no date control found' }
 }
 
+async function tryProviderCalendarDate(page, targetDate, provider, trace) {
+  const date = parseDate(targetDate)
+  const day = String(date.getUTCDate())
+  const before = await collectPageEvidence(page)
+
+  if (hasCalendarMonthAndDay(before, targetDate)) {
+    return {
+      attempted: true,
+      visible: true,
+      reason: `${provider} calendar shows target month/day`
+    }
+  }
+
+  const dayCell = page.getByText(day, { exact: true })
+  const count = await dayCell.count().catch(() => 0)
+  if (count > 0) {
+    await dayCell.first().click({ timeout: 3000 }).catch(() => {})
+    trace.push({ action: `${provider} calendar day click`, day, count })
+    await settle(page)
+
+    const after = await collectPageEvidence(page)
+    return {
+      attempted: true,
+      visible: hasDateContext(after, targetDate) || hasCalendarMonthAndDay(after, targetDate),
+      reason: `${provider} calendar day ${day} clicked`
+    }
+  }
+
+  return { attempted: false, visible: false, reason: `${provider} calendar day ${day} not found` }
+}
+
 async function collectPageEvidence(page) {
   const title = await page.title().catch(() => '')
   const url = page.url()
@@ -239,6 +275,32 @@ async function settle(page) {
 
 function includesAny(haystack, needles) {
   return needles.some((needle) => haystack.includes(String(needle).toLowerCase()))
+}
+
+function hasDateContext(snapshot, targetDate) {
+  const date = parseDate(targetDate)
+  const human = formatHumanDate(date).toLowerCase()
+  const compactHuman = formatCompactHumanDate(date).toLowerCase()
+  return snapshot.haystack.includes(targetDate) ||
+    snapshot.haystack.includes(human) ||
+    snapshot.haystack.includes(compactHuman) ||
+    hasCalendarMonthAndDay(snapshot, targetDate)
+}
+
+function hasCalendarMonthAndDay(snapshot, targetDate) {
+  const date = parseDate(targetDate)
+  const monthYear = new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC'
+  }).format(date).toLowerCase()
+  const day = String(date.getUTCDate())
+  const dayPattern = new RegExp(`(^|\\D)${escapeRegExp(day)}($|\\D)`)
+  return snapshot.haystack.includes(monthYear) && dayPattern.test(snapshot.haystack)
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function isBookingSurface(snapshot, journey) {

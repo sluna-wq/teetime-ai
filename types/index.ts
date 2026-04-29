@@ -1,3 +1,26 @@
+export type BookingProvider =
+  | 'golfnow'
+  | 'webtrac'
+  | 'cps'
+  | 'foreup'
+  | 'northstar'
+  | 'teeitup'
+  | 'chronogolf'
+  | 'teesnap'
+  | 'teequest'
+  | 'clubcaddie'
+  | 'course_direct'
+  | 'phone'
+
+export type BookingCapability =
+  | 'deep_link_to_date'
+  | 'booking_engine_landing'
+  | 'manual_date_selection'
+  | 'agent_required'
+  | 'blocked_in_headless'
+  | 'course_policy_page'
+  | 'phone_only'
+
 export interface Course {
   id: string
   name: string
@@ -10,6 +33,9 @@ export interface Course {
   website: string | null
   golfnow_facility_id: string | null
   golfnow_slug: string | null
+  booking_provider?: BookingProvider | null
+  booking_capability?: BookingCapability | null
+  booking_notes?: string | null
   holes_available: number[] // [9, 18]
   walking_allowed: boolean
   price_range: string // "$" | "$$" | "$$$"
@@ -74,7 +100,4 @@ export interface TeeTimeQuery {
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
-  tee_times?: TeeTime[]
-  courses?: Course[]
-  query?: TeeTimeQuery
 }

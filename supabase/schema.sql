@@ -14,6 +14,9 @@ create table if not exists courses (
   website text,
   golfnow_facility_id text,
   golfnow_slug text,
+  booking_provider text,
+  booking_capability text,
+  booking_notes text,
   holes_available integer[] default '{9,18}',
   walking_allowed boolean default true,
   price_range text default '$$',
@@ -23,6 +26,10 @@ create table if not exists courses (
   image_url text,
   updated_at timestamptz default now()
 );
+
+alter table courses add column if not exists booking_provider text;
+alter table courses add column if not exists booking_capability text;
+alter table courses add column if not exists booking_notes text;
 
 -- Tee times (live data, refresh every 30 min)
 create table if not exists tee_times (

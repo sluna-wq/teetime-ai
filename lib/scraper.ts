@@ -34,7 +34,7 @@ const BOOKING_INTEGRATIONS: Record<string, BookingIntegration> = {
   'ponkapoag-1': { provider: 'official', url: 'https://www.mass.gov/locations/ponkapoag-golf-course' },
   'ponkapoag-2': { provider: 'official', url: 'https://www.mass.gov/locations/ponkapoag-golf-course' },
   'putterham-meadows': { provider: 'foreup', url: 'https://foreupsoftware.com/index.php/booking/19865/2748#teetimes' },
-  'granite-links': { provider: 'northstar', url: 'https://www.granitelinksgolfclub.com/web/pages/reserve-a-tee-time' },
+  'granite-links': { provider: 'northstar', url: 'https://www.granitelinks.com/reserve-a-tee-time' },
   'presidents': { provider: 'teeitup', url: 'https://presidents-golf-course.book.teeitup.com/', course: '17943' },
   'furnace-brook': { provider: 'foreup', url: 'https://foreupsoftware.com/index.php/booking/23086/8988#teetimes' },
   'braintree-municipal': { provider: 'official', url: 'https://www.braintreegolf.com/book-tee-times/' },

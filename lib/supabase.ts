@@ -25,20 +25,14 @@ export function getSupabaseAdmin() {
 }
 
 // Re-export as properties for backwards compatibility with existing imports
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const supabase = new Proxy({} as SupabaseClient, {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   get(_, prop) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (getSupabase() as any)[prop]
+    return Reflect.get(getSupabase(), prop)
   },
 })
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const supabaseAdmin = new Proxy({} as SupabaseClient, {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   get(_, prop) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (getSupabaseAdmin() as any)[prop]
+    return Reflect.get(getSupabaseAdmin(), prop)
   },
 })

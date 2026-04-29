@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useMemo, ComponentType } from 'react'
+import { useMemo, useState, type ComponentType } from 'react'
 import type { Course, TeeTime } from '@/types'
 import { formatTime, formatDate } from '@/lib/utils'
 import { type Filter, FILTER_LABELS } from '@/lib/filters'
+import { getBookingBadgeLabel, getBookingButtonLabel, getBookingTone } from '@/lib/booking'
 
 type SortKey = 'default' | 'price_asc' | 'time_asc' | 'time_desc'
 
@@ -35,11 +36,6 @@ export function ResultsPanel({ teeTimes, courses, selectedCourseId, onCourseSele
   const [sort, setSort] = useState<SortKey>('default')
   const [showAll, setShowAll] = useState(false)
 
-  const [prevLen, setPrevLen] = useState(teeTimes.length)
-  if (teeTimes.length !== prevLen) {
-    setShowAll(false); setSort('default'); setPrevLen(teeTimes.length)
-  }
-
   const toggleFilter = (f: Filter) => {
     setShowAll(false)
     const next = new Set(activeFilters)
@@ -55,13 +51,13 @@ export function ResultsPanel({ teeTimes, courses, selectedCourseId, onCourseSele
 
   const filtered = useMemo(() => {
     let list = [...teeTimes]
-    if (activeFilters.has('walking'))  list = list.filter((t) => t.walking_allowed)
-    if (activeFilters.has('under40'))  list = list.filter((t) => t.price_per_player <= 40)
-    if (activeFilters.has('under55'))  list = list.filter((t) => t.price_per_player <= 55)
-    if (activeFilters.has('18holes'))  list = list.filter((t) => t.holes === 18)
-    if (activeFilters.has('9holes'))   list = list.filter((t) => t.holes === 9)
+    if (activeFilters.has('walking')) list = list.filter((t) => t.walking_allowed)
+    if (activeFilters.has('under40')) list = list.filter((t) => t.price_per_player <= 40)
+    if (activeFilters.has('under55')) list = list.filter((t) => t.price_per_player <= 55)
+    if (activeFilters.has('18holes')) list = list.filter((t) => t.holes === 18)
+    if (activeFilters.has('9holes')) list = list.filter((t) => t.holes === 9)
     if (sort === 'price_asc') list.sort((a, b) => a.price_per_player - b.price_per_player)
-    if (sort === 'time_asc')  list.sort((a, b) => a.tee_time.localeCompare(b.tee_time))
+    if (sort === 'time_asc') list.sort((a, b) => a.tee_time.localeCompare(b.tee_time))
     if (sort === 'time_desc') list.sort((a, b) => b.tee_time.localeCompare(a.tee_time))
     return list
   }, [teeTimes, activeFilters, sort])
@@ -200,8 +196,9 @@ function ResultRow({ teeTime, rank, isSelected, isRecommended, onSelect }: {
   teeTime: TeeTime; rank: number; isSelected: boolean; isRecommended: boolean; onSelect: () => void
 }) {
   const course = teeTime.course
-  const isUnverified = teeTime.source === 'demo'
-  const bookingLabel = isUnverified ? 'Check live ->' : 'Reserve ->'
+  const bookingTone = getBookingTone(teeTime)
+  const bookingLabel = `${getBookingButtonLabel(teeTime)} ->`
+  const bookingBadge = getBookingBadgeLabel(teeTime)
   return (
     <div
       onClick={onSelect}
@@ -230,7 +227,7 @@ function ResultRow({ teeTime, rank, isSelected, isRecommended, onSelect }: {
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
               className={`text-[11px] font-semibold text-white px-3 py-1 rounded-lg transition-colors whitespace-nowrap ${
-                isUnverified ? 'bg-gray-800 hover:bg-gray-900' : 'bg-green-600 hover:bg-green-700'
+                bookingTone === 'strong' ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-800 hover:bg-gray-900'
               }`}
             >
               {bookingLabel}
@@ -248,11 +245,11 @@ function ResultRow({ teeTime, rank, isSelected, isRecommended, onSelect }: {
           <span className={`text-[11px] rounded-full px-2 py-0.5 ${teeTime.walking_allowed ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>
             {teeTime.walking_allowed ? 'Walk ✓' : 'Cart'}
           </span>
-          {isUnverified && (
-            <span className="text-[11px] rounded-full bg-amber-50 px-2 py-0.5 text-amber-700">
-              Check live
-            </span>
-          )}
+          <span className={`text-[11px] rounded-full px-2 py-0.5 ${
+            bookingTone === 'strong' ? 'bg-green-50 text-green-700' : bookingTone === 'manual' ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-600'
+          }`}>
+            {bookingBadge}
+          </span>
         </div>
       </div>
     </div>
