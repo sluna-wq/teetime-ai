@@ -32,7 +32,7 @@ export interface TeeTime {
   cart_included: boolean
   walking_allowed: boolean
   booking_url: string
-  source: 'golfnow' | 'course_direct'
+  source: 'golfnow' | 'course_direct' | 'demo'
   scraped_at: string
 }
 

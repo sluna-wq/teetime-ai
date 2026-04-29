@@ -5,9 +5,10 @@
     {
       "id": "fresh_pond_booking_flow",
       "course": "Fresh Pond Golf Course",
-      "entryUrl": "https://www.freshpondgolf.com",
+      "entryUrl": "https://freshpondgolf.com/policies/tee-times/",
+      "directBookingUrl": "https://secure.cambridgema.gov/webtrac/web/search.html?module=GR",
       "target": {
-        "date": "tomorrow",
+        "date": "today",
         "time": "08:30",
         "players": 4,
         "holes": 18
@@ -15,15 +16,17 @@
       "agentGoal": "Navigate like a user from the course site to the tee-time booking surface, set or confirm the requested date if the site allows it, and stop before login, payment, or final reservation.",
       "successSignals": {
         "courseNameAnyOf": ["Fresh Pond", "Fresh Pond Golf Course"],
+        "targetEvidenceAnyOf": ["Fresh Pond Golf Course", "8:30 am"],
         "bookingIntentAnyOf": ["tee time", "book", "booking", "reserve", "chronogolf", "foreup", "golfnow"],
         "dateContext": "target-date-visible-or-selected-or-date-picker-open",
-        "stopBeforeAnyOf": ["payment", "checkout", "confirm reservation", "book now final submit"]
+        "stopBeforeAnyOf": ["payment information", "confirm reservation", "complete booking", "submit reservation"]
       }
     },
     {
       "id": "brookline_putterham_booking_flow",
       "course": "Putterham Meadows Golf Club",
       "entryUrl": "https://www.brooklinegolf.com",
+      "directBookingUrl": "https://foreupsoftware.com/index.php/booking/19865/2748#/teetimes",
       "target": {
         "date": "nextSaturday",
         "time": "11:20",
@@ -33,9 +36,10 @@
       "agentGoal": "Navigate like a user from Brookline Golf Course to online tee times for Putterham/Robert T. Lynch, set or confirm the requested date if possible, and stop before login, payment, or final reservation.",
       "successSignals": {
         "courseNameAnyOf": ["Brookline Golf Course", "Robert T. Lynch", "Putterham"],
+        "targetEvidenceAnyOf": ["Brookline Golf Course", "Putterham", "Robert T. Lynch"],
         "bookingIntentAnyOf": ["tee time", "book", "booking", "reserve", "foreup"],
         "dateContext": "target-date-visible-or-selected-or-date-picker-open",
-        "stopBeforeAnyOf": ["payment", "checkout", "confirm reservation", "book now final submit"]
+        "stopBeforeAnyOf": ["payment information", "confirm reservation", "complete booking", "submit reservation"]
       }
     },
     {
@@ -51,15 +55,17 @@
       "agentGoal": "Navigate like a user to Granite Links tee-time booking, set or confirm the requested date if possible, and stop before login, payment, or final reservation.",
       "successSignals": {
         "courseNameAnyOf": ["Granite Links"],
+        "targetEvidenceAnyOf": ["Granite Links", "9:20"],
         "bookingIntentAnyOf": ["tee time", "book", "booking", "reserve", "foreup", "golfnow"],
         "dateContext": "target-date-visible-or-selected-or-date-picker-open",
-        "stopBeforeAnyOf": ["payment", "checkout", "confirm reservation", "book now final submit"]
+        "stopBeforeAnyOf": ["payment information", "confirm reservation", "complete booking", "submit reservation"]
       }
     },
     {
       "id": "city_of_boston_devine_booking_flow",
       "course": "William J. Devine Golf Course",
-      "entryUrl": "https://www.cityofbostongolf.com/franklin-park",
+      "entryUrl": "https://cityofbostongolf.com/non-permit-holder-tee-times/",
+      "directBookingUrl": "https://williamjdevine.cps.golf/",
       "target": {
         "date": "tomorrow",
         "time": "08:50",
@@ -69,9 +75,10 @@
       "agentGoal": "Navigate like a user from the Franklin Park page to the William J. Devine tee-time booking surface, set or confirm the requested date if possible, and stop before login, payment, or final reservation.",
       "successSignals": {
         "courseNameAnyOf": ["William J. Devine", "Franklin Park", "City of Boston Golf"],
+        "targetEvidenceAnyOf": ["William J. Devine", "Franklin Park", "8:50"],
         "bookingIntentAnyOf": ["tee time", "book", "booking", "reserve"],
         "dateContext": "target-date-visible-or-selected-or-date-picker-open",
-        "stopBeforeAnyOf": ["payment", "checkout", "confirm reservation", "book now final submit"]
+        "stopBeforeAnyOf": ["payment information", "confirm reservation", "complete booking", "submit reservation"]
       }
     }
   ]

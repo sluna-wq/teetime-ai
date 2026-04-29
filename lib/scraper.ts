@@ -381,6 +381,31 @@ export async function queryTeeTimes(params: {
   players?: number
   course_ids?: string[]
 }) {
+  const verified = await fetchTeeTimesFromDb(params, false)
+  const fallback = verified.results.length > 0 ? verified : await fetchTeeTimesFromDb(params, true)
+
+  if (fallback.error) {
+    console.warn('queryTeeTimes DB error:', fallback.error)
+    return []
+  }
+
+  return fallback.results.map((tt) => {
+    if (!tt.course) return tt
+    return {
+      ...tt,
+      booking_url: getCourseBookingUrl(
+        tt.course,
+        tt.tee_date,
+        tt.source === 'demo' ? null : tt.booking_url
+      ),
+    }
+  })
+}
+
+async function fetchTeeTimesFromDb(
+  params: Parameters<typeof queryTeeTimes>[0],
+  includeDemo: boolean
+) {
   let query = supabaseAdmin
     .from('tee_times')
     .select(`
@@ -388,10 +413,11 @@ export async function queryTeeTimes(params: {
       course:courses(*)
     `)
     .gte('tee_date', params.date || params.date_start || new Date().toISOString().split('T')[0])
-    .neq('source', 'demo')
     .order('tee_date', { ascending: true })
     .order('tee_time', { ascending: true })
-    .limit(20)
+    .limit(200)
+
+  query = includeDemo ? query : query.neq('source', 'demo')
 
   if (params.date) {
     query = query.eq('tee_date', params.date)
@@ -419,15 +445,12 @@ export async function queryTeeTimes(params: {
   }
 
   const { data, error } = await query
-
-  if (error) {
-    console.warn('queryTeeTimes DB error:', error.message)
-    return []
-  }
+  if (error) return { results: [], error: error.message }
 
   let results = data || []
 
-  // Filter by distance if lat/lng provided
+  // Filter by distance if lat/lng provided. Supabase does the cheap filtering first;
+  // the final radius trim needs course coordinates from the joined row.
   if (params.lat && params.lng && results.length > 0) {
     const radius = params.radius_miles || 25
     results = results.filter((tt) => {
@@ -438,17 +461,7 @@ export async function queryTeeTimes(params: {
     })
   }
 
-  if (results.length === 0) {
-    return []
-  }
-
-  return results.map((tt) => {
-    if (!tt.course) return tt
-    return {
-      ...tt,
-      booking_url: getCourseBookingUrl(tt.course, tt.tee_date, tt.booking_url),
-    }
-  })
+  return { results: results.slice(0, 20), error: null }
 }
 
 export function haversineDistanceMiles(

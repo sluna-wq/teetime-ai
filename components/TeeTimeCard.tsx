@@ -10,6 +10,7 @@ interface Props {
 
 export function TeeTimeCard({ teeTime, isHighlighted }: Props) {
   const course = teeTime.course
+  const isUnverified = teeTime.source === 'demo'
 
   return (
     <div
@@ -53,15 +54,22 @@ export function TeeTimeCard({ teeTime, isHighlighted }: Props) {
         <span className="rounded-full bg-gray-100 px-2.5 py-1">
           {teeTime.available_spots} {teeTime.available_spots === 1 ? 'spot' : 'spots'}
         </span>
+        {isUnverified && (
+          <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700 font-medium">
+            Check live
+          </span>
+        )}
       </div>
 
       <a
         href={teeTime.booking_url}
         target="_blank"
         rel="noopener noreferrer"
-        className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-700 active:bg-green-800"
+        className={`mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors ${
+          isUnverified ? 'bg-gray-800 hover:bg-gray-900 active:bg-black' : 'bg-green-600 hover:bg-green-700 active:bg-green-800'
+        }`}
       >
-        Reserve
+        {isUnverified ? 'Check live' : 'Reserve'}
         <ExternalLinkIcon />
       </a>
     </div>

@@ -61,6 +61,7 @@ Important: call recommend_tee_times ONLY after you have seen search results and 
 
 ## Booking
 Tell the user to click Reserve on the card. Do not fabricate booking URLs.
+If a search result has source "demo", treat it as an unverified planning lead from cached/sample inventory, not confirmed live availability. Say to click "Check live" on the card to confirm on the course booking engine, and do not say the tee time is definitely available.
 
 ## Alerts
 When someone wants to be notified, use create_alert. Ask for email if not provided.
@@ -162,7 +163,14 @@ async function handleToolCall(
     if (results.length === 0) {
       return { message: 'No tee times found matching those criteria. Try widening the date range, increasing the radius, or raising the price limit.' }
     }
-    return { tee_times: results, count: results.length }
+    const unverifiedCount = results.filter((result) => result.source === 'demo').length
+    return {
+      tee_times: results,
+      count: results.length,
+      availability_note: unverifiedCount === results.length
+        ? 'These are unverified fallback planning leads because no live verified tee-time rows are currently available. The user must click Check live and confirm availability on the course booking engine.'
+        : undefined,
+    }
   }
 
   if (toolName === 'recommend_tee_times') {

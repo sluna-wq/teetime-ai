@@ -144,6 +144,7 @@ export function TeeTimeResults({ teeTimes, totalCount }: Props) {
 
 function ResultRow({ teeTime, rank }: { teeTime: TeeTime; rank: number }) {
   const course = teeTime.course
+  const isUnverified = teeTime.source === 'demo'
   return (
     <div className="group flex items-center gap-3 rounded-xl border border-gray-100 bg-white px-3.5 py-2.5 hover:border-green-200 hover:shadow-sm transition-all">
       <span className="shrink-0 text-[11px] font-bold text-gray-300 w-4 text-center">{rank}</span>
@@ -171,9 +172,11 @@ function ResultRow({ teeTime, rank }: { teeTime: TeeTime; rank: number }) {
           href={teeTime.booking_url}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-[11px] font-semibold bg-green-600 text-white px-2.5 py-1 rounded-lg hover:bg-green-700 transition-colors whitespace-nowrap"
+          className={`text-[11px] font-semibold text-white px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap ${
+            isUnverified ? 'bg-gray-800 hover:bg-gray-900' : 'bg-green-600 hover:bg-green-700'
+          }`}
         >
-          Reserve →
+          {isUnverified ? 'Check live ->' : 'Reserve ->'}
         </a>
       </div>
     </div>

@@ -200,6 +200,8 @@ function ResultRow({ teeTime, rank, isSelected, isRecommended, onSelect }: {
   teeTime: TeeTime; rank: number; isSelected: boolean; isRecommended: boolean; onSelect: () => void
 }) {
   const course = teeTime.course
+  const isUnverified = teeTime.source === 'demo'
+  const bookingLabel = isUnverified ? 'Check live ->' : 'Reserve ->'
   return (
     <div
       onClick={onSelect}
@@ -227,9 +229,11 @@ function ResultRow({ teeTime, rank, isSelected, isRecommended, onSelect }: {
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
-              className="text-[11px] font-semibold bg-green-600 text-white px-3 py-1 rounded-lg hover:bg-green-700 transition-colors whitespace-nowrap"
+              className={`text-[11px] font-semibold text-white px-3 py-1 rounded-lg transition-colors whitespace-nowrap ${
+                isUnverified ? 'bg-gray-800 hover:bg-gray-900' : 'bg-green-600 hover:bg-green-700'
+              }`}
             >
-              Reserve →
+              {bookingLabel}
             </a>
           </div>
         </div>
@@ -244,6 +248,11 @@ function ResultRow({ teeTime, rank, isSelected, isRecommended, onSelect }: {
           <span className={`text-[11px] rounded-full px-2 py-0.5 ${teeTime.walking_allowed ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>
             {teeTime.walking_allowed ? 'Walk ✓' : 'Cart'}
           </span>
+          {isUnverified && (
+            <span className="text-[11px] rounded-full bg-amber-50 px-2 py-0.5 text-amber-700">
+              Check live
+            </span>
+          )}
         </div>
       </div>
     </div>

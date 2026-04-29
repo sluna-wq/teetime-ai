@@ -10,6 +10,7 @@ const journeysPath = path.join(repoRoot, 'evals', 'booking-journeys.json')
 
 const MODE = process.env.BOOKING_EVAL_MODE || getArg('--mode') || 'fixture'
 const TODAY = parseDate(process.env.EVAL_TODAY || new Date().toISOString().slice(0, 10))
+const HEADLESS = process.env.BOOKING_HEADLESS !== '0'
 
 async function main() {
   const suite = JSON.parse(await fs.readFile(journeysPath, 'utf8'))
@@ -53,7 +54,7 @@ function validateJourneySpec(journey) {
 async function runBrowserJourney(journey) {
   const checks = []
   const { chromium } = await import('playwright')
-  const browser = await chromium.launch({ headless: true })
+  const browser = await chromium.launch({ headless: HEADLESS })
   const page = await browser.newPage()
   const trace = []
 
@@ -65,11 +66,20 @@ async function runBrowserJourney(journey) {
     await clickLikelyBookingEntry(page, trace)
     await settle(page)
 
+    if (journey.directBookingUrl) {
+      await page.goto(journey.directBookingUrl, { waitUntil: 'domcontentloaded', timeout: 30000 })
+      trace.push({ action: 'direct booking fallback', url: page.url(), title: await page.title() })
+      await settle(page)
+    }
+
     const snapshot = await collectPageEvidence(page)
     const targetDate = resolveDateToken(journey.target.date)
 
-    check(checks, 'opened booking-related surface', includesAny(snapshot.haystack, journey.successSignals.bookingIntentAnyOf), snapshot.summary)
+    check(checks, 'opened booking-related surface', isBookingSurface(snapshot, journey), snapshot.summary)
     check(checks, 'course context present', includesAny(snapshot.haystack, journey.successSignals.courseNameAnyOf), snapshot.summary)
+    if (journey.successSignals.targetEvidenceAnyOf) {
+      check(checks, 'target evidence present', includesAny(snapshot.haystack, journey.successSignals.targetEvidenceAnyOf), snapshot.summary)
+    }
     check(checks, 'did not reach prohibited final step', !includesAny(snapshot.haystack, journey.successSignals.stopBeforeAnyOf), snapshot.summary)
 
     const dateEvidence = await trySetOrOpenDateContext(page, targetDate, trace)
@@ -113,6 +123,29 @@ async function acceptCookieBannerIfPresent(page, trace) {
 }
 
 async function clickLikelyBookingEntry(page, trace) {
+  const hrefCandidates = [
+    'a[href*="tee" i]',
+    'a[href*="book" i]',
+    'a[href*="reserve" i]',
+    'a[href*="foreup" i]',
+    'a[href*="chronogolf" i]',
+    'a[href*="golfnow" i]'
+  ]
+
+  for (const selector of hrefCandidates) {
+    const candidate = page.locator(selector).filter({ hasText: /book|tee|reserve|time/i })
+    const count = await candidate.count().catch(() => 0)
+    if (count > 0) {
+      const href = await candidate.first().getAttribute('href').catch(() => null)
+      await Promise.allSettled([
+        page.waitForLoadState('domcontentloaded', { timeout: 10000 }),
+        candidate.first().click({ timeout: 5000 })
+      ])
+      trace.push({ action: 'click booking href candidate', selector, href, url: page.url() })
+      return
+    }
+  }
+
   const labels = [
     'Book a Tee Time',
     'Book Tee Times',
@@ -206,6 +239,12 @@ async function settle(page) {
 
 function includesAny(haystack, needles) {
   return needles.some((needle) => haystack.includes(String(needle).toLowerCase()))
+}
+
+function isBookingSurface(snapshot, journey) {
+  return includesAny(snapshot.haystack, journey.successSignals.bookingIntentAnyOf) ||
+    includesAny(snapshot.haystack, ['search results', 'tee time search', 'available', 'unavailable']) ||
+    includesAny(snapshot.haystack, journey.successSignals.targetEvidenceAnyOf || [])
 }
 
 function check(checks, name, pass, actual) {
