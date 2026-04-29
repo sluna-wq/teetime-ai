@@ -14,7 +14,7 @@ export async function GET() {
       .limit(5),
     supabaseAdmin
       .from('tee_times')
-      .select('source, scraped_at, course:courses(name, slug, booking_provider)')
+      .select('source, scraped_at, course:courses(name, slug)')
       .gte('scraped_at', freshSince)
       .neq('source', 'demo')
       .limit(1000),
@@ -27,7 +27,6 @@ export async function GET() {
   const byCourse = new Map<string, {
     course: string
     slug: string
-    provider: string | null
     fresh_rows: number
     latest_verified_at: string
     sources: Set<string>
@@ -40,7 +39,6 @@ export async function GET() {
     const existing = byCourse.get(key) || {
       course: course.name,
       slug: course.slug,
-      provider: course.booking_provider,
       fresh_rows: 0,
       latest_verified_at: row.scraped_at,
       sources: new Set<string>(),
