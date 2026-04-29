@@ -244,7 +244,6 @@ async function tryProviderCalendarDate(page, targetDate, provider, trace) {
     trace.push({ action: `${provider} calendar day click`, day, count })
     await settle(page)
 
-    const after = await collectPageEvidence(page)
     return {
       attempted: true,
       visible: true,

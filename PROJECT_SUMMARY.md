@@ -38,7 +38,7 @@ User → ChatPanel (Next.js) → /api/chat (Claude Sonnet 4.6, SSE)
 
 **Backend (Next.js API Routes)**
 - `/api/chat`: Claude Sonnet 4.6 with tool_use. Streams Server-Sent Events to the client: `{ type: 'text' }`, `{ type: 'tool_call', name, input }`, `{ type: 'tool_result', name, result }`, `[DONE]`. Multi-turn loop handles tool_use → result → continue.
-- `/api/cron/scrape`: GolfNow scraper with three-tier fallback: JSON API → HTML parsing → deterministic demo data. Runs every 30 minutes via cron-job.org.
+- `/api/cron/scrape`: GolfNow scraper with JSON API and HTML parsing. Runs every 30 minutes via cron-job.org.
 - `/api/cron/check-alerts`: Queries active alerts against current tee times, sends email via Resend when matches found.
 - `/api/seed`: Seeds course static data to Supabase.
 
@@ -63,9 +63,7 @@ Users can say "let me know if anything opens up at Granite Links this weekend." 
 
 **Results separate from chat.** Early versions embedded tee time cards inside chat bubbles. This was confusing — the conversation felt cluttered, and users couldn't compare options at a glance. The final design puts results in a dedicated panel that updates when Claude searches. Chat remains a clean conversational thread.
 
-**Three-tier scraping fallback.** GolfNow blocks automated requests intermittently. A scraper-only approach would mean the app fails when GolfNow blocks it. Solution: try the GolfNow JSON API first, fall back to HTML parsing, and if both fail, use deterministic demo data generated from the course's price range and a date seed. The demo data is stable (same seed → same results) so it doesn't look random. The app always has something to show.
-
-**Deterministic demo data.** The demo data uses `(courseId + date)` as a seed for consistent output. This is important: a professor visiting the site should see real-looking data even if the scraper hasn't run yet or GolfNow is blocking. The demo layer ensures the app is always live.
+**Verified availability only.** GolfNow and course booking engines block automated requests intermittently. The app tries the GolfNow JSON API first, then falls back to HTML parsing. If no verified rows are found, the product shows no availability instead of filling the gap with deterministic demo slots. Reliability here means the system is allowed to say "I don't know."
 
 **Haversine distance filtering.** Rather than filtering by city or zip code, the backend calculates actual GPS distance from the user's location. The user's GPS coordinates are injected into every message sent to Claude, enabling radius-based queries without the user typing an address.
 
@@ -97,7 +95,7 @@ The AI earns its place: it resolves intent that a dropdown can never capture ("s
 
 ## Stack and Deployment
 
-- **Frontend/API**: Next.js 14 App Router, TypeScript, Tailwind CSS
+- **Frontend/API**: Next.js App Router, TypeScript, Tailwind CSS
 - **AI**: Claude Sonnet 4.6 via Anthropic API, streaming with tool_use
 - **Database**: Supabase (Postgres), RLS enabled for public read access
 - **Map**: Mapbox GL JS with dynamic import (SSR-safe)
@@ -111,7 +109,7 @@ The AI earns its place: it resolves intent that a dropdown can never capture ("s
 
 **AI-native is a design constraint, not a feature.** The hard part wasn't integrating Claude — it was designing the product so that removing Claude would break it, not just degrade it. If you can imagine replacing the AI with a dropdown, you haven't built an AI-native product.
 
-**The fallback layer is the product.** In a demo context, reliability matters more than accuracy. The deterministic demo data layer means the professor can visit the site at any time and see real-looking results, regardless of whether GolfNow is cooperating. Shipping something that works 100% of the time (even with mock data) beats shipping something that works perfectly 80% of the time.
+**Trust beats demo fullness.** In a booking product, reliable means "true or clearly unknown," not "always populated." The app now treats failed or empty scrapes as empty verified inventory, so the assistant cannot turn stale/sample rows into confident tee-time claims.
 
 **Context injection is the key to conversational search.** GPS coordinates injected into every message, active filter state sent back to Claude on follow-ups, conversation history preserved across turns — these are what make the concierge feel coherent across a session. Without them, every message feels like the first message.
 

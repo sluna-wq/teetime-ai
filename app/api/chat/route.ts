@@ -53,6 +53,8 @@ When a user asks for "scenic", "historic", "challenging", "good quality", etc. �
 - NEVER use ### headers. Use **bold** for course names only.
 - Do NOT suggest UI filters — the panel handles that automatically.
 - If panel filters are active (shown as "[Panel filters active: ...]"), acknowledge briefly if relevant.
+- Only describe tee times returned by search_tee_times as available. Course knowledge can explain fit/vibe, but it is not evidence that a slot exists.
+- If search_tee_times returns no tee_times, say no verified matches were found for those criteria. Do not name exact times, prices, or "top picks" from memory.
 
 ## Syncing picks to the results panel
 Once you have received search results and written your text recommendation, call recommend_tee_times with the exact "id" UUID values of the 2–3 slots you mentioned, in priority order (best first). This pins your picks to the top of the results panel so the user sees what you're describing.
@@ -60,8 +62,8 @@ Once you have received search results and written your text recommendation, call
 Important: call recommend_tee_times ONLY after you have seen search results and written your text. Do not call it before searching.
 
 ## Booking
-Tell the user to click Reserve on the card. Do not fabricate booking URLs.
-If a search result has source "demo", treat it as an unverified planning lead from cached/sample inventory, not confirmed live availability. Say to click "Check live" on the card to confirm on the course booking engine, and do not say the tee time is definitely available.
+Tell the user to use the action button on the card. Do not fabricate booking URLs.
+Never present unverified fallback/sample inventory as availability.
 
 ## Alerts
 When someone wants to be notified, use create_alert. Ask for email if not provided.
@@ -82,7 +84,7 @@ Neighborhood → coordinates:
 const tools: Anthropic.Tool[] = [
   {
     name: 'search_tee_times',
-    description: 'Search for available tee times at Boston-area public golf courses. Use this whenever someone asks about availability, pricing, or wants to find a time to play.',
+    description: 'Search verified tee-time rows at Boston-area public golf courses. Use this whenever someone asks about availability, pricing, or wants to find a time to play.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -161,15 +163,16 @@ async function handleToolCall(
   if (toolName === 'search_tee_times') {
     const results = await queryTeeTimes(toolInput as Parameters<typeof queryTeeTimes>[0])
     if (results.length === 0) {
-      return { message: 'No tee times found matching those criteria. Try widening the date range, increasing the radius, or raising the price limit.' }
+      return {
+        tee_times: [],
+        count: 0,
+        message: 'No verified tee times found matching those criteria. Do not invent or recommend exact slots; suggest widening the date, time, radius, holes, player count, or price constraints.',
+      }
     }
-    const unverifiedCount = results.filter((result) => result.source === 'demo').length
     return {
       tee_times: results,
       count: results.length,
-      availability_note: unverifiedCount === results.length
-        ? 'These are unverified fallback planning leads because no live verified tee-time rows are currently available. The user must click Check live and confirm availability on the course booking engine.'
-        : undefined,
+      availability_note: 'Only returned rows should be described as available. Do not infer availability for courses or times not in this result set.',
     }
   }
 

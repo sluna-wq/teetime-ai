@@ -123,7 +123,7 @@ export function ChatPanel({ onTeeTimes, onCourses, onSearchContext, onRecommenda
           }
           if (event.type === 'tool_result' && event.name === 'search_tee_times') {
             const r = event.result as { tee_times?: TeeTime[] }
-            if (r.tee_times) pendingTeeTimes = r.tee_times
+            if (Array.isArray(r.tee_times)) pendingTeeTimes = r.tee_times
           }
           if (event.type === 'tool_result' && event.name === 'recommend_tee_times') {
             const r = event.result as { slot_ids?: string[] }

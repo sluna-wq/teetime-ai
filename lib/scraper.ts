@@ -382,21 +382,20 @@ export async function queryTeeTimes(params: {
   course_ids?: string[]
 }) {
   const verified = await fetchTeeTimesFromDb(params, false)
-  const fallback = verified.results.length > 0 ? verified : await fetchTeeTimesFromDb(params, true)
 
-  if (fallback.error) {
-    console.warn('queryTeeTimes DB error:', fallback.error)
+  if (verified.error) {
+    console.warn('queryTeeTimes DB error:', verified.error)
     return []
   }
 
-  return fallback.results.map((tt) => {
+  return verified.results.map((tt) => {
     if (!tt.course) return tt
     return {
       ...tt,
       booking_url: getCourseBookingUrl(
         tt.course,
         tt.tee_date,
-        tt.source === 'demo' ? null : tt.booking_url
+        tt.booking_url
       ),
     }
   })

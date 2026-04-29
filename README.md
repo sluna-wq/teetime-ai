@@ -9,7 +9,7 @@ AI-first tee time search for Boston-area public golf courses.
 - Searches Supabase tee-time rows through structured tool calls.
 - Shows results in a filterable list and Mapbox map.
 - Supports email alerts for matching tee times.
-- Scrapes verified GolfNow rows when available and falls back to seeded demo inventory for a reliable demo.
+- Shows only verified scraped tee-time rows; when none match, the app says so instead of fabricating availability.
 
 ## Run Locally
 

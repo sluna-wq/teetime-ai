@@ -80,7 +80,7 @@ export default function Home() {
             </div>
             <div className="flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5">
               <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-500" />
-              <span className="text-[10px] font-medium text-green-700">Live</span>
+              <span className="text-[10px] font-medium text-green-700">Verified</span>
             </div>
           </div>
 

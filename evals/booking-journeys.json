@@ -28,7 +28,7 @@
       "id": "brookline_putterham_booking_flow",
       "course": "Putterham Meadows Golf Club",
       "entryUrl": "https://www.brooklinegolf.com",
-      "directBookingUrl": "https://foreupsoftware.com/index.php/booking/19865/2748#/teetimes",
+      "directBookingUrl": "https://foreupsoftware.com/index.php/booking/19865/2748#teetimes",
       "target": {
         "date": "nextSaturday",
         "time": "11:20",
