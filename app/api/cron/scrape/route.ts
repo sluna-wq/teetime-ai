@@ -12,7 +12,12 @@ export async function GET(req: NextRequest) {
 
   try {
     const daysAhead = Number(req.nextUrl.searchParams.get('days') || process.env.SCRAPE_DAYS_AHEAD || 15)
-    const result = await scrapeAllCourses(daysAhead)
+    const courseSlugs = req.nextUrl.searchParams
+      .get('courses')
+      ?.split(',')
+      .map((slug) => slug.trim())
+      .filter(Boolean)
+    const result = await scrapeAllCourses(daysAhead, courseSlugs)
     return NextResponse.json({ success: true, ...result })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)

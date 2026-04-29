@@ -409,7 +409,7 @@ async function fetchProviderTeeTimes(course: Course, date: string): Promise<Veri
 }
 
 // Main scrape function — runs for all courses, next N days
-export async function scrapeAllCourses(daysAhead = SCRAPE_DAYS_AHEAD) {
+export async function scrapeAllCourses(daysAhead = SCRAPE_DAYS_AHEAD, courseSlugs?: string[]) {
   const logEntry = await supabaseAdmin
     .from('scrape_logs')
     .insert({ started_at: new Date().toISOString() })
@@ -433,8 +433,14 @@ export async function scrapeAllCourses(daysAhead = SCRAPE_DAYS_AHEAD) {
 
   const dates = getDatesToScrape(daysAhead)
 
-  for (const course of courses as Course[]) {
-    if (SUPPORTED_COURSE_SLUGS.size > 0 && !SUPPORTED_COURSE_SLUGS.has(course.slug)) continue
+  const explicitCourseSlugs = new Set(courseSlugs?.filter(Boolean) || [])
+  const coursesToScrape = (courses as Course[]).filter((course) => {
+    if (explicitCourseSlugs.size > 0) return explicitCourseSlugs.has(course.slug)
+    if (SUPPORTED_COURSE_SLUGS.size > 0) return SUPPORTED_COURSE_SLUGS.has(course.slug)
+    return true
+  })
+
+  for (const course of coursesToScrape) {
 
     for (const date of dates) {
       try {
@@ -497,7 +503,7 @@ export async function scrapeAllCourses(daysAhead = SCRAPE_DAYS_AHEAD) {
       .from('scrape_logs')
       .update({
         finished_at: new Date().toISOString(),
-        courses_attempted: courses.length,
+        courses_attempted: coursesToScrape.length,
         tee_times_found: totalFound,
         tee_times_inserted: totalInserted,
         errors,

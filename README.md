@@ -63,6 +63,7 @@ The pilot should run from verified rows only:
 - `TEE_TIME_FRESH_MINUTES=20` hides rows older than the freshness window.
 - `SUPPORTED_COURSE_SLUGS=putterham-meadows,furnace-brook,widows-walk` limits scraping to courses with provider adapters that are expected to hold up.
 - `/api/cron/scrape?days=15` replaces each course/date with newly verified provider rows.
+- `/api/cron/scrape?days=7&courses=putterham-meadows` can scrape one course quickly; prefer separate cron jobs per reliable course.
 - `/api/pilot/status` reports fresh tee-time coverage by course and source.
 
 Run the scrape every 5-10 minutes during the pilot for supported courses. If `/api/pilot/status` has `ok: false` or too few covered courses, the product should be treated as degraded rather than allowed to invent availability.
