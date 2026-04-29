@@ -48,14 +48,26 @@ const BOOKING_INTEGRATIONS: Record<string, BookingIntegration> = {
 const FRESH_TEE_TIME_WINDOW_MINUTES = Number(process.env.TEE_TIME_FRESH_MINUTES || 45)
 const SCRAPE_DAYS_AHEAD = Number(process.env.SCRAPE_DAYS_AHEAD || 15)
 const MAX_SCRAPE_DAYS_AHEAD = Number(process.env.MAX_SCRAPE_DAYS_AHEAD || 7)
-const SCRAPE_COURSE_BATCH_SIZE = Number(process.env.SCRAPE_COURSE_BATCH_SIZE || 3)
-const DEFAULT_SUPPORTED_COURSE_SLUGS = ['putterham-meadows', 'furnace-brook', 'widows-walk']
+const SCRAPE_COURSE_BATCH_SIZE = Number(process.env.SCRAPE_COURSE_BATCH_SIZE || 6)
+const DEFAULT_SUPPORTED_COURSE_SLUGS = [
+  'putterham-meadows',
+  'furnace-brook',
+  'widows-walk',
+  'braintree-municipal',
+  'presidents',
+]
 const SUPPORTED_COURSE_SLUGS = new Set(
   (process.env.SUPPORTED_COURSE_SLUGS || DEFAULT_SUPPORTED_COURSE_SLUGS.join(','))
     .split(',')
     .map((slug) => slug.trim())
     .filter(Boolean)
 )
+
+const VERIFIED_GOLFNOW_FACILITIES: Record<string, { facilityId: string; slug: string }> = {
+  'braintree-municipal': { facilityId: '16026', slug: 'braintree-municipal-golf-course' },
+  'presidents': { facilityId: '17943', slug: 'presidents-golf-course' },
+  'widows-walk': { facilityId: '18419', slug: 'widows-walk-golf-course' },
+}
 
 function getCourseFallbackUrl(course: Pick<Course, 'name' | 'website'>): string {
   return course.website ||
@@ -135,147 +147,165 @@ function numberValue(value: unknown, fallback = 0) {
   return Number.isFinite(n) ? n : fallback
 }
 
-// Fetch tee times for a single course on a single date via GolfNow API
 async function fetchGolfNowTeeTimes(
-  facilityId: string,
-  golfnowSlug: string,
-  date: string // YYYY-MM-DD
-): Promise<VerifiedTeeTime[]> {
-  const [year, month, day] = date.split('-')
-  const formattedDate = `${month}/${day}/${year}`
-
-  // Try the JSON API endpoint first
-  const apiUrl = `https://api.golfnow.com/v1/search/tee-times?facilityId=${facilityId}&date=${formattedDate}&holes=18&players=0&time=all`
-
-  try {
-    const response = await fetch(apiUrl, {
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-        'Referer': 'https://www.golfnow.com/',
-        'Origin': 'https://www.golfnow.com',
-      },
-      signal: AbortSignal.timeout(10000),
-    })
-
-    if (!response.ok) {
-      // Fall back to scraping the HTML page
-      return await scrapeGolfNowPage(facilityId, golfnowSlug, date)
-    }
-
-    const data = await response.json()
-    return parseGolfNowApiResponse(data, facilityId, golfnowSlug)
-  } catch {
-    return await scrapeGolfNowPage(facilityId, golfnowSlug, date)
-  }
-}
-
-function parseGolfNowApiResponse(
-  data: unknown,
-  facilityId: string,
-  golfnowSlug: string
-): VerifiedTeeTime[] {
-  // Handle various GolfNow API response shapes
-  const teeTimes: VerifiedTeeTime[] = []
-
-  if (!data || typeof data !== 'object') return teeTimes
-
-  const d = data as Record<string, unknown>
-  const slots: unknown[] = (d.TeeTimes as unknown[]) ||
-    (d.teetimes as unknown[]) ||
-    (d.Results as unknown[]) ||
-    []
-
-  for (const slot of slots) {
-    if (!slot || typeof slot !== 'object') continue
-    const s = slot as Record<string, unknown>
-
-    const time = (s.Time || s.time || s.StartTime || '') as string
-    const players = ((s.Players || s.players || s.MaxPlayers || 4) as number)
-    const holes = ((s.Holes || s.holes || 18) as number)
-    const cartRequired = ((s.CartRequired || s.cartRequired || false) as boolean)
-
-    const rates = (s.Rates || s.rates || []) as Array<Record<string, unknown>>
-    const firstRate = rates[0] || {}
-    const greenFee = ((firstRate.GreenFee || firstRate.greenFee || 0) as number)
-    const cartFee = ((firstRate.CartFee || firstRate.cartFee || 0) as number)
-    const totalFee = ((firstRate.TotalFee || firstRate.totalFee || greenFee + cartFee) as number)
-    const bookingUrl = normalizeBookingUrl(
-      (s.BookingUrl || s.bookingUrl || s.booking_url || s.Url || s.url || '') as string
-    )
-
-    if (time && totalFee > 0) {
-      teeTimes.push({
-        time,
-        players,
-        holes,
-        price: totalFee,
-        cartIncluded: cartRequired,
-        walkingAllowed: !cartRequired,
-        bookingUrl: bookingUrl ||
-          `https://www.golfnow.com/tee-times/facility/${facilityId}-${golfnowSlug}/search`,
-        source: 'golfnow',
-      })
-    }
-  }
-
-  return teeTimes
-}
-
-// Scrape GolfNow HTML page as fallback using fetch + regex
-async function scrapeGolfNowPage(
+  course: Course,
   facilityId: string,
   golfnowSlug: string,
   date: string
 ): Promise<VerifiedTeeTime[]> {
   const [year, month, day] = date.split('-')
-  const formattedDate = `${month}%2F${day}%2F${year}`
-
-  const url = `https://www.golfnow.com/tee-times/facility/${facilityId}-${golfnowSlug}/search?date=${formattedDate}&holes=18&players=0&time=all&sortby=Time`
+  const golfNowDate = new Date(Number(year), Number(month) - 1, Number(day))
+    .toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 
   try {
-    const response = await fetch(url, {
+    const response = await fetch('https://www.golfnow.com/api/tee-times/tee-time-search-results', {
+      method: 'POST',
       headers: {
-        'Accept': 'text/html,application/xhtml+xml',
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': `https://www.golfnow.com/tee-times/facility/${facilityId}-${golfnowSlug}/search`,
       },
+      body: JSON.stringify({
+        useWidgetNextAvailableDays: null,
+        nextAvailableTeeTime: null,
+        tags: null,
+        address: null,
+        pageSize: 100,
+        teeTimeCount: 100,
+        pageNumber: 0,
+        date: golfNowDate,
+        sortBy: 'Date',
+        sortByRollup: 'Date.MinDate',
+        sortDirection: 'Asc',
+        hotDealsOnly: false,
+        golfPassPerksOnly: false,
+        bestDealsOnly: false,
+        promotedCampaignsOnly: false,
+        priceMin: 0,
+        priceMax: 10000,
+        players: 0,
+        timePeriod: 'Any',
+        timeMin: 10,
+        timeMax: 42,
+        holes: 'Any',
+        facilityType: 'GolfCourse',
+        latitude: course.lat,
+        longitude: course.lng,
+        radius: 35,
+        maxAllowedRadius: null,
+        facilityId: Number(facilityId),
+        facilityIds: [],
+        marketId: null,
+        marketName: null,
+        searchType: 'Facility',
+        view: 'Grouping',
+        nonGPS: null,
+        excludeFeaturedFacilities: true,
+        excludePrivateFacilities: false,
+        rateTagCodes: null,
+        customerToken: null,
+        rateType: 'all',
+        currentClientDate: new Date().toISOString(),
+        daysToSearch: null,
+        facilityTagsExclusive: null,
+        isSimulator: null,
+        isHotDealsZoneMoreDeals: null,
+        facilityGroupId: null,
+        trackmanOnly: false,
+      }),
       signal: AbortSignal.timeout(15000),
     })
 
     if (!response.ok) return []
-    if (response.url && !response.url.includes(`/facility/${facilityId}-`)) return []
-
-    const html = await response.text()
-
-    // Extract JSON data embedded in Next.js __NEXT_DATA__ script tag
-    const nextDataMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/)
-    if (nextDataMatch) {
-      try {
-        const nextData = JSON.parse(nextDataMatch[1])
-        const teeTimesData = nextData?.props?.pageProps?.teeTimes ||
-          nextData?.props?.pageProps?.initialData?.teeTimes ||
-          []
-        if (teeTimesData.length > 0) {
-          return parseGolfNowApiResponse({ TeeTimes: teeTimesData }, facilityId, golfnowSlug)
-        }
-      } catch { /* fall through */ }
-    }
-
-    // Last resort: parse tee time data from inline window.__data__ or similar
-    const dataMatch = html.match(/window\.__(?:INITIAL_STATE|data|teeTimes)__\s*=\s*({[\s\S]*?});/)
-    if (dataMatch) {
-      try {
-        const data = JSON.parse(dataMatch[1])
-        return parseGolfNowApiResponse(data, facilityId, golfnowSlug)
-      } catch { /* ignore */ }
-    }
-
-    return []
+    return parseGolfNowSearchResponse(await response.json(), course, facilityId)
   } catch (err) {
     console.error(`Scrape error for facility ${facilityId}:`, err)
     return []
   }
+}
+
+function parseGolfNowSearchResponse(data: unknown, course: Course, facilityId: string): VerifiedTeeTime[] {
+  if (!data || typeof data !== 'object') return []
+
+  const d = data as Record<string, unknown>
+  const results = d.ttResults as Record<string, unknown> | undefined
+  const teeTimes = Array.isArray(results?.teeTimes) ? results.teeTimes : []
+
+  return teeTimes
+    .map((slot) => parseGolfNowSlot(slot, course, facilityId))
+    .filter((slot): slot is VerifiedTeeTime => Boolean(slot))
+}
+
+function parseGolfNowSlot(slot: unknown, course: Course, facilityId: string): VerifiedTeeTime | null {
+  if (!slot || typeof slot !== 'object') return null
+  const s = slot as Record<string, unknown>
+  const facility = s.facility as Record<string, unknown> | undefined
+  if (String(facility?.facilityId || s.facilityId || '') !== facilityId) return null
+  if (!isExpectedGolfNowFacilityName(String(facility?.name || ''), course.name)) return null
+
+  const rates = Array.isArray(s.teeTimeRates) ? s.teeTimeRates as Array<Record<string, unknown>> : []
+  const rate = rates[0]
+  const time = parseGolfNowTime(s.time)
+  const holes = numberValue(rate?.holeCount, 18)
+  const price = numberValue((s.displayRate as Record<string, unknown> | undefined)?.value,
+    numberValue((rate?.singlePlayerPrice as Record<string, unknown> | undefined)?.greensFees &&
+      ((rate?.singlePlayerPrice as Record<string, unknown>).greensFees as Record<string, unknown>).value, 0))
+  const bookingUrl = normalizeBookingUrl(String(s.detailUrl || rate?.detailUrl || '')) ||
+    `https://www.golfnow.com/tee-times/facility/${facilityId}/tee-time/${s.defaultTeeTimeRateId || rate?.teeTimeRateId}`
+
+  if (!time || holes <= 0 || price <= 0 || !bookingUrl) return null
+
+  return {
+    time,
+    players: maxPlayersFromRule(String(s.playerRule || rate?.playerRule || 'Any')),
+    holes,
+    price,
+    cartIncluded: rate?.isCartIncluded === true || String(rate?.transportation || '').toLowerCase().includes('cart'),
+    walkingAllowed: rate?.isCartIncluded !== true,
+    bookingUrl,
+    source: 'golfnow',
+  }
+}
+
+function parseGolfNowTime(value: unknown) {
+  const time = value as Record<string, unknown> | undefined
+  const formatted = String(time?.formatted || '')
+  const meridian = String(time?.formattedTimeMeridian || '')
+  if (!formatted) return ''
+  const [hourRaw, minuteRaw = '00'] = formatted.split(':')
+  let hour = Number(hourRaw)
+  if (!Number.isFinite(hour)) return ''
+  if (/pm/i.test(meridian) && hour < 12) hour += 12
+  if (/am/i.test(meridian) && hour === 12) hour = 0
+  return `${String(hour).padStart(2, '0')}:${minuteRaw.padStart(2, '0')}`
+}
+
+function maxPlayersFromRule(rule: string) {
+  if (!rule || /any/i.test(rule)) return 4
+  const values: Record<string, number> = { One: 1, Two: 2, Three: 3, Four: 4 }
+  return Object.entries(values).reduce((max, [word, value]) => (
+    rule.includes(word) ? Math.max(max, value) : max
+  ), 1)
+}
+
+function isExpectedGolfNowFacilityName(actual: string, expected: string) {
+  const normalize = (value: string) => value
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\b(golf|course|club|municipal|at|the)\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const a = normalize(actual)
+  const e = normalize(expected)
+  return Boolean(a && e && (a.includes(e) || e.includes(a) || tokenOverlap(a, e) >= 2))
+}
+
+function tokenOverlap(a: string, b: string) {
+  const left = new Set(a.split(' ').filter(Boolean))
+  return b.split(' ').filter((token) => left.has(token)).length
 }
 
 async function fetchForeUpTeeTimes(
@@ -400,15 +430,32 @@ function extractForeUpJson<T>(html: string, variableName: string): T | null {
 
 async function fetchProviderTeeTimes(course: Course, date: string): Promise<VerifiedTeeTime[]> {
   const integration = BOOKING_INTEGRATIONS[course.slug]
-  if (integration?.provider === 'foreup') {
-    return fetchForeUpTeeTimes(integration, date)
-  }
+  const golfNow = VERIFIED_GOLFNOW_FACILITIES[course.slug]
+  const providerResults = await Promise.all([
+    golfNow
+      ? fetchGolfNowTeeTimes(course, golfNow.facilityId, golfNow.slug, date)
+      : Promise.resolve([]),
+    integration?.provider === 'foreup'
+      ? fetchForeUpTeeTimes(integration, date)
+      : Promise.resolve([]),
+  ])
 
-  if (course.golfnow_facility_id && course.golfnow_slug) {
-    return fetchGolfNowTeeTimes(course.golfnow_facility_id, course.golfnow_slug, date)
-  }
+  const merged = mergeVerifiedTeeTimes(providerResults.flat())
+  if (merged.length > 0) return merged
 
   return []
+}
+
+function mergeVerifiedTeeTimes(slots: VerifiedTeeTime[]) {
+  const byTime = new Map<string, VerifiedTeeTime>()
+  for (const slot of slots) {
+    const key = `${slot.time}:${slot.holes}`
+    const existing = byTime.get(key)
+    if (!existing || (slot.source === 'golfnow' && existing.source !== 'golfnow')) {
+      byTime.set(key, slot)
+    }
+  }
+  return [...byTime.values()].sort((a, b) => a.time.localeCompare(b.time) || a.holes - b.holes)
 }
 
 // Main scrape function — runs for all courses, next N days
