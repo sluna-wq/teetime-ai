@@ -3,8 +3,6 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { queryTeeTimes } from '@/lib/scraper'
 import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
-
 export const maxDuration = 60
 
 export async function GET(req: NextRequest) {
@@ -21,6 +19,15 @@ export async function GET(req: NextRequest) {
   if (!alerts || alerts.length === 0) {
     return NextResponse.json({ fired: 0 })
   }
+
+  if (!process.env.RESEND_API_KEY) {
+    return NextResponse.json(
+      { fired: 0, total: alerts.length, error: 'RESEND_API_KEY is not configured' },
+      { status: 503 }
+    )
+  }
+
+  const resend = new Resend(process.env.RESEND_API_KEY)
 
   let firedCount = 0
 
