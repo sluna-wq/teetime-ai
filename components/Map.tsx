@@ -121,7 +121,7 @@ export function Map({ courses, teeTimes, selectedCourseId, onCourseSelect, userL
 
         const popup = new mapboxGl.Popup({
           offset: 16,
-          closeButton: true,
+          closeButton: false,
           maxWidth: '300px',
         }).setHTML(popupHtml)
 
@@ -151,13 +151,6 @@ export function Map({ courses, teeTimes, selectedCourseId, onCourseSelect, userL
     })
   }, [mapboxLoaded, courses, selectedCourseId, userLocation, timesByCourse, onCourseSelect])
 
-  // Fly to selected course
-  useEffect(() => {
-    if (!selectedCourseId || !mapInstanceRef.current) return
-    const course = courses.find((c) => c.id === selectedCourseId)
-    if (!course) return
-    mapInstanceRef.current.flyTo({ center: [course.lng, course.lat], zoom: 13, duration: 700 })
-  }, [selectedCourseId, courses])
 
   return (
     <div className="relative h-full w-full">

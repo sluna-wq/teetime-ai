@@ -89,7 +89,6 @@ export function ChatPanel({ onTeeTimes, onCourses, onSearchContext, onRecommenda
       let pendingCourses: Course[] | null = null
       let pendingSearchContext: TeeTimeQuery | null = null
       let pendingRecommendations: string[] | null = null
-      let rowAdded = false
       let sseBuffer = '' // accumulates across chunks — fixes fragmented large events
 
       const publishPendingResults = () => {
@@ -109,17 +108,8 @@ export function ChatPanel({ onTeeTimes, onCourses, onSearchContext, onRecommenda
             pendingSearchContext = event.input as TeeTimeQuery
           }
           if (event.type === 'text') {
-            if (!rowAdded) {
-              setMessages((prev) => [...prev, { role: 'assistant', content: '' }])
-              rowAdded = true
-            }
             setStatus('streaming')
             assistantText += event.text
-            setMessages((prev) => {
-              const u = [...prev]
-              u[u.length - 1] = { role: 'assistant', content: assistantText }
-              return u
-            })
           }
           if (event.type === 'tool_result' && event.name === 'search_tee_times') {
             const r = event.result as { tee_times?: TeeTime[] }
@@ -151,6 +141,10 @@ export function ChatPanel({ onTeeTimes, onCourses, onSearchContext, onRecommenda
       // Flush any remaining buffer content
       if (sseBuffer.startsWith('data: ')) handleEvent(sseBuffer)
 
+      // Emit the complete assistant message once, after the stream is fully done
+      if (assistantText) {
+        setMessages((prev) => [...prev, { role: 'assistant', content: assistantText }])
+      }
       publishPendingResults()
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Something went wrong'
@@ -224,7 +218,9 @@ export function ChatPanel({ onTeeTimes, onCourses, onSearchContext, onRecommenda
                   <div key={d} className="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: `${d}ms` }} />
                 ))}
               </div>
-              <span className="text-[11px] text-gray-400">{status === 'searching' ? 'Checking tee times…' : 'Thinking…'}</span>
+              <span className="text-[11px] text-gray-400">
+                {status === 'searching' ? 'Checking tee times…' : status === 'streaming' ? 'Writing response…' : 'Thinking…'}
+              </span>
             </div>
           </div>
         )}

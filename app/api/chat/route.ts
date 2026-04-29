@@ -15,7 +15,7 @@ ALWAYS call search_tee_times immediately. Fill in missing details with smart def
 Default values when not specified:
 - Date: tomorrow
 - Time: any (but prefer morning, 07:00–12:00)
-- Holes: 18
+- Holes: omit the holes parameter — search all available (9 and 18). Only set holes if the user explicitly asks for 9 or 18.
 - Radius: 25 miles from user's GPS location (always provided in the conversation)
 - Players: any (don't filter on players unless explicitly mentioned)
 

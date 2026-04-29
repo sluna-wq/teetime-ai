@@ -123,7 +123,7 @@ export function ResultsPanel({ teeTimes, courses, selectedCourseId, onCourseSele
         <div className="flex-1 p-3">
           <MapComponent
             courses={courses}
-            teeTimes={teeTimes}
+            teeTimes={filtered}
             selectedCourseId={selectedCourseId}
             onCourseSelect={onCourseSelect}
             userLocation={userLocation}
@@ -139,7 +139,7 @@ export function ResultsPanel({ teeTimes, courses, selectedCourseId, onCourseSele
               {recommended.length > 0 && (
                 <div className="mb-3">
                   <p className="text-[10px] font-semibold uppercase tracking-widest text-green-600 mb-1.5 px-1">
-                    ★ Claude&apos;s picks
+                    ★ Recommended
                   </p>
                   <div className="space-y-2">
                     {recommended.filter((tt) => visibleIds.has(tt.id)).map((tt, i) => (
@@ -249,6 +249,13 @@ function ResultRow({ teeTime, rank, isSelected, isRecommended, onSelect }: {
             bookingTone === 'strong' ? 'bg-green-50 text-green-700' : bookingTone === 'manual' ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-600'
           }`}>
             {bookingBadge}
+          </span>
+          <span className={`text-[11px] rounded-full px-2 py-0.5 font-semibold ${
+            teeTime.available_spots <= 2
+              ? 'bg-red-50 text-red-600'
+              : 'bg-sky-50 text-sky-700'
+          }`}>
+            {teeTime.available_spots === 1 ? '1 spot left' : `${teeTime.available_spots} spots`}
           </span>
           <span className="text-[11px] rounded-full bg-blue-50 px-2 py-0.5 text-blue-700">
             Verified {timeAgo(teeTime.scraped_at)}

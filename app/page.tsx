@@ -48,8 +48,6 @@ export default function Home() {
   // Called when Claude fires search_tee_times — auto-populate matching filter pills
   const handleSearchContext = useCallback((ctx: TeeTimeQuery) => {
     const newFilters = new Set<string>()
-    if (ctx.holes === 18) newFilters.add('18holes')
-    if (ctx.holes === 9) newFilters.add('9holes')
     if (ctx.max_price && ctx.max_price <= 40) newFilters.add('under40')
     else if (ctx.max_price && ctx.max_price <= 55) newFilters.add('under55')
     setActiveFilters(newFilters)
