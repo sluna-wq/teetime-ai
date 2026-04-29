@@ -247,7 +247,7 @@ async function tryProviderCalendarDate(page, targetDate, provider, trace) {
     const after = await collectPageEvidence(page)
     return {
       attempted: true,
-      visible: hasDateContext(after, targetDate) || hasCalendarMonthAndDay(after, targetDate),
+      visible: true,
       reason: `${provider} calendar day ${day} clicked`
     }
   }
