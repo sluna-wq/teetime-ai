@@ -132,11 +132,11 @@ export function Map({ courses, teeTimes, selectedCourseId, onCourseSelect, userL
           .addTo(map)
 
         markersRef.current[course.id] = marker
+        if (isSelected) marker.togglePopup()
 
         el.addEventListener('click', (e) => {
           e.stopPropagation()
           onCourseSelect(isSelected ? null : course.id)
-          marker.togglePopup()
         })
       })
 
