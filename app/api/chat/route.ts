@@ -15,7 +15,7 @@ ALWAYS call search_tee_times immediately. Fill in missing details with smart def
 Default values when not specified:
 - Date: tomorrow
 - Time: any (but prefer morning, 07:00–12:00)
-- Holes: omit the holes parameter — search all available (9 and 18). Only set holes if the user explicitly asks for 9 or 18.
+- Holes: NEVER set holes unless the user said the words "9 holes", "9-hole", "18 holes", or "18-hole". Do not default to 18. Omit the parameter entirely — the search returns both 9 and 18 hole slots when holes is unset.
 - Radius: 25 miles from user's GPS location (always provided in the conversation)
 - Players: any (don't filter on players unless explicitly mentioned)
 
@@ -96,7 +96,7 @@ const tools: Anthropic.Tool[] = [
         date_end: { type: 'string', description: 'End of date range YYYY-MM-DD' },
         time_start: { type: 'string', description: 'Earliest tee time HH:MM (e.g. "07:00")' },
         time_end: { type: 'string', description: 'Latest tee time HH:MM (e.g. "12:00")' },
-        holes: { type: 'number', enum: [9, 18], description: 'Number of holes (9 or 18)' },
+        holes: { type: 'number', enum: [9, 18], description: 'ONLY set if the user explicitly said "9 holes" or "18 holes". Leave unset to return all holes.' },
         max_price: { type: 'number', description: 'Maximum price per player in dollars' },
         players: { type: 'number', description: 'Number of players in the group' },
       },
@@ -297,7 +297,22 @@ export async function POST(req: NextRequest) {
                 )
               )
 
-              const result = await handleToolCall(block.name, block.input as Record<string, unknown>)
+              let callInput = block.input as Record<string, unknown>
+              // Guard: Claude defaults holes=18 even when unasked. Strip it unless the user
+              // explicitly mentioned a hole count in the conversation.
+              if (block.name === 'search_tee_times' && callInput.holes === 18) {
+                const userText = messages
+                  .filter((m: { role: string }) => m.role === 'user')
+                  .map((m: { content: string }) => m.content)
+                  .join(' ')
+                  .toLowerCase()
+                const holesExplicit = /\b(9|nine|18|eighteen)[\s-]?hole/i.test(userText)
+                if (!holesExplicit) {
+                  callInput = { ...callInput }
+                  delete callInput.holes
+                }
+              }
+              const result = await handleToolCall(block.name, callInput)
               const isEmptyVerifiedSearch = block.name === 'search_tee_times' &&
                 typeof result === 'object' &&
                 result !== null &&
